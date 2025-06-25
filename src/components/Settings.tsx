@@ -63,7 +63,7 @@ const Settings: React.FC = () => {
   });
 
   const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [appVersion, setAppVersion] = useState<string>('1.0.0');
+  const [appVersion, setAppVersion] = useState<string>('1.0.1');
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   
@@ -76,7 +76,7 @@ const Settings: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const { query, isReady } = useDatabase();
+  const { query, isReady, backupDatabase, restoreDatabase } = useDatabase();
   
   // Use refs to store the latest state values
   const settingsRef = useRef(settings);
@@ -237,6 +237,8 @@ const Settings: React.FC = () => {
         const result = await window.electronAPI.checkForUpdates();
         if (result.updateAvailable) {
           setUpdateMessage(`Une mise à jour (v${result.version}) est disponible et sera installée automatiquement.`);
+        } else if (result.error) {
+          setUpdateMessage(`Erreur lors de la vérification: ${result.error}`);
         } else {
           setUpdateMessage('Vous utilisez déjà la dernière version de l\'application.');
         }

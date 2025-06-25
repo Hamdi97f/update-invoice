@@ -24,7 +24,8 @@ if (!isDev) {
     provider: 'github',
     owner: 'Hamdi97f',
     repo: 'updateinvoice',
-    private: false
+    private: false,
+    releaseType: 'release'
   });
 }
 
@@ -574,7 +575,9 @@ function createWindow() {
 function checkForUpdates() {
   log.info('Checking for updates...');
   try {
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdatesAndNotify().catch(err => {
+      log.error('Error in checkForUpdatesAndNotify:', err);
+    });
   } catch (error) {
     log.error('Error checking for updates:', error);
   }
@@ -909,7 +912,7 @@ ipcMain.handle('check-for-updates', async () => {
     };
   } catch (error) {
     log.error('Error checking for updates:', error);
-    throw error;
+    return { updateAvailable: false, error: error.message };
   }
 });
 
