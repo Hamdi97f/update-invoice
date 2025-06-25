@@ -1,0 +1,26 @@
+directories:
+  output: dist-electron
+  buildResources: build
+appId: com.facturationpro.desktop
+productName: Facturation Pro
+files:
+  - filter:
+      - dist/**/*
+      - public/electron.js
+      - public/preload.js
+      - node_modules/**/*
+win:
+  target: nsis
+  icon: public/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+mac:
+  target: dmg
+  icon: public/icon.icns
+linux:
+  target: AppImage
+  icon: public/icon.png
+electronVersion: 28.3.3

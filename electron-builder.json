@@ -1,0 +1,50 @@
+{
+  "appId": "com.facturationpro.desktop",
+  "productName": "Facturation Pro",
+  "directories": {
+    "output": "dist-electron",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "public/electron.js",
+    "public/preload.js",
+    "node_modules/**/*"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "icon": "public/icon.ico",
+    "publish": ["github"]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "artifactName": "${productName}-Setup-${version}.${ext}"
+  },
+  "mac": {
+    "target": "dmg",
+    "icon": "public/icon.icns",
+    "publish": ["github"],
+    "artifactName": "${productName}-${version}.${ext}"
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "public/icon.png",
+    "publish": ["github"],
+    "artifactName": "${productName}-${version}.${ext}"
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "yourusername",
+    "repo": "facturation-pro-desktop",
+    "private": false,
+    "releaseType": "release"
+  }
+}
