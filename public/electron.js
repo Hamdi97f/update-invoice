@@ -23,7 +23,7 @@ if (!isDev) {
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Hamdi97f',
-    repo: 'updateinvoice',
+    repo: 'update-invoice',
     private: false,
     releaseType: 'release'
   });

@@ -56,7 +56,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Hamdi97f/updateinvoice.git"
+    "url": "https://github.com/Hamdi97f/update-invoice.git"
   },
   "build": {
     "appId": "com.facturationpro.desktop",
@@ -106,7 +106,7 @@
     "publish": {
       "provider": "github",
       "owner": "Hamdi97f",
-      "repo": "updateinvoice",
+      "repo": "update-invoice",
       "private": false,
       "releaseType": "release"
     }
