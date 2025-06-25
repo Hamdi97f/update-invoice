@@ -21,7 +21,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [showActivation, setShowActivation] = useState(false);
-  const { isReady, isActivated, checkActivation } = useDatabase();
+  const { isReady, isActivated, checkActivation, dbError: databaseError } = useDatabase();
 
   useEffect(() => {
     // Check if database is ready
@@ -40,14 +40,14 @@ function App() {
       // Set a timeout to check if database is still not ready after 5 seconds
       const timer = setTimeout(() => {
         if (!isReady) {
-          setDbError("La base de données n'a pas pu être initialisée. Veuillez redémarrer l'application.");
+          setDbError(databaseError || "La base de données n'a pas pu être initialisée. Veuillez redémarrer l'application.");
           setIsLoading(false);
         }
       }, 5000);
       
       return () => clearTimeout(timer);
     }
-  }, [isReady]);
+  }, [isReady, databaseError]);
 
   const handleCreateNewFacture = () => {
     console.log('Create new invoice');

@@ -23,7 +23,7 @@ if (!isDev) {
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Hamdi97f',
-    repo: 'update-invoice',
+    repo: 'updateinvoice',
     private: false
   });
 }
@@ -31,6 +31,7 @@ if (!isDev) {
 let mainWindow;
 let db;
 let isActivated = false;
+let activeTransactions = 0;
 
 // Initialize database with better error handling
 function initDatabase() {
@@ -54,6 +55,7 @@ function initDatabase() {
     // Enable foreign keys and WAL mode for better performance
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000'); // Set busy timeout to 5 seconds
     
     // Check and update database schema
     updateDatabaseSchema();
@@ -675,13 +677,21 @@ ipcMain.handle('db-query', async (event, query, params = []) => {
       }
     }
     
-    const stmt = db.prepare(query);
-    if (query.trim().toLowerCase().startsWith('select')) {
-      result = stmt.all(params);
-      log.info('Query result count:', result.length);
-    } else {
-      result = stmt.run(params);
-      log.info('Query result:', result);
+    // Track active transactions
+    activeTransactions++;
+    
+    try {
+      const stmt = db.prepare(query);
+      if (query.trim().toLowerCase().startsWith('select')) {
+        result = stmt.all(params);
+        log.info('Query result count:', result.length);
+      } else {
+        result = stmt.run(params);
+        log.info('Query result:', result);
+      }
+    } finally {
+      // Ensure we always decrement the counter
+      activeTransactions--;
     }
     
     return result;
@@ -914,6 +924,18 @@ ipcMain.handle('backup-database', async (event) => {
       throw new Error('Database not initialized');
     }
     
+    // Wait for any active transactions to complete
+    if (activeTransactions > 0) {
+      await new Promise(resolve => {
+        const checkInterval = setInterval(() => {
+          if (activeTransactions === 0) {
+            clearInterval(checkInterval);
+            resolve(true);
+          }
+        }, 100);
+      });
+    }
+    
     const result = await dialog.showSaveDialog(mainWindow, {
       title: 'Sauvegarder la base de données',
       defaultPath: `facturation_backup_${format(new Date(), 'yyyy-MM-dd')}.db`,
@@ -955,6 +977,18 @@ ipcMain.handle('restore-database', async (event) => {
   try {
     if (!db) {
       throw new Error('Database not initialized');
+    }
+    
+    // Wait for any active transactions to complete
+    if (activeTransactions > 0) {
+      await new Promise(resolve => {
+        const checkInterval = setInterval(() => {
+          if (activeTransactions === 0) {
+            clearInterval(checkInterval);
+            resolve(true);
+          }
+        }, 100);
+      });
     }
     
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1004,6 +1038,7 @@ ipcMain.handle('restore-database', async (event) => {
     // Enable foreign keys and WAL mode
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000'); // Set busy timeout to 5 seconds
     
     return { success: true };
   } catch (error) {

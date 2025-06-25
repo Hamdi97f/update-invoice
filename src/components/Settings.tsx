@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Save, FileText, Receipt, Truck, ShoppingCart, Settings as SettingsIcon, Calculator, Palette, Upload, Eye, RefreshCw, Info, Database, Download, Upload as UploadIcon } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
 import TaxConfiguration from './TaxConfiguration';
@@ -71,8 +71,30 @@ const Settings: React.FC = () => {
   const [backupInProgress, setBackupInProgress] = useState(false);
   const [restoreInProgress, setRestoreInProgress] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  
+  // Save button state
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const { query, isReady, backupDatabase, restoreDatabase } = useDatabase();
+  const { query, isReady } = useDatabase();
+  
+  // Use refs to store the latest state values
+  const settingsRef = useRef(settings);
+  const companyInfoRef = useRef(companyInfo);
+  const invoiceSettingsRef = useRef(invoiceSettings);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  
+  useEffect(() => {
+    companyInfoRef.current = companyInfo;
+  }, [companyInfo]);
+  
+  useEffect(() => {
+    invoiceSettingsRef.current = invoiceSettings;
+  }, [invoiceSettings]);
 
   useEffect(() => {
     if (isReady) {
@@ -137,27 +159,36 @@ const Settings: React.FC = () => {
 
   const saveSettings = async () => {
     if (!isReady) return;
+    
+    setIsSaving(true);
+    setSaveSuccess(false);
 
     try {
+      // Use the ref values to ensure we're using the latest state
       await query(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        ['numbering', JSON.stringify(settings)]
+        ['numbering', JSON.stringify(settingsRef.current)]
       );
 
       await query(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        ['company', JSON.stringify(companyInfo)]
+        ['company', JSON.stringify(companyInfoRef.current)]
       );
 
       await query(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        ['invoiceSettings', JSON.stringify(invoiceSettings)]
+        ['invoiceSettings', JSON.stringify(invoiceSettingsRef.current)]
       );
 
-      alert('Paramètres sauvegardés avec succès');
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Erreur lors de la sauvegarde des paramètres');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -917,10 +948,20 @@ const Settings: React.FC = () => {
         <div className="flex justify-end">
           <button
             onClick={saveSettings}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center space-x-2"
+            disabled={isSaving}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center space-x-2 disabled:opacity-70"
           >
-            <Save className="w-5 h-5" />
-            <span>Sauvegarder les paramètres</span>
+            {isSaving ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                <span>Sauvegarde en cours...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-5 h-5 mr-2" />
+                <span>{saveSuccess ? "Paramètres sauvegardés ✓" : "Sauvegarder les paramètres"}</span>
+              </>
+            )}
           </button>
         </div>
       )}

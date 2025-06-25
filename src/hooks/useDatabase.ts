@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 declare global {
   interface Window {
@@ -23,6 +23,7 @@ export function useDatabase() {
   const [isReady, setIsReady] = useState(false);
   const [isActivated, setIsActivated] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [pendingQueries, setPendingQueries] = useState(0);
 
   useEffect(() => {
     // Check if Electron API is available
@@ -50,50 +51,66 @@ export function useDatabase() {
     }
   }, []);
 
-  const query = async (sql: string, params: any[] = []) => {
+  const query = useCallback(async (sql: string, params: any[] = []) => {
     if (!window.electronAPI) {
       throw new Error('Database not available. This application must run in its desktop environment.');
     }
     
     try {
+      setPendingQueries(prev => prev + 1);
+      
       // Add a small delay to prevent UI blocking
-      await new Promise(resolve => setTimeout(resolve, 10));
-      return await window.electronAPI.dbQuery(sql, params);
+      if (sql.toLowerCase().includes('insert') || sql.toLowerCase().includes('update') || sql.toLowerCase().includes('delete')) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      const result = await window.electronAPI.dbQuery(sql, params);
+      return result;
     } catch (error) {
       console.error('Database query error:', error);
       throw error;
+    } finally {
+      setPendingQueries(prev => Math.max(0, prev - 1));
     }
-  };
+  }, []);
 
-  const getFactures = async () => {
+  const getFactures = useCallback(async () => {
     if (!window.electronAPI) {
       throw new Error('Database not available. This application must run in its desktop environment.');
     }
     
     try {
+      setPendingQueries(prev => prev + 1);
+      
       // Add a small delay to prevent UI blocking
       await new Promise(resolve => setTimeout(resolve, 10));
+      
       return await window.electronAPI.getFactures();
     } catch (error) {
       console.error('Error getting factures:', error);
       throw error;
+    } finally {
+      setPendingQueries(prev => Math.max(0, prev - 1));
     }
-  };
+  }, []);
 
-  const trackStockMovement = async (movement: any) => {
+  const trackStockMovement = useCallback(async (movement: any) => {
     if (!window.electronAPI) {
       throw new Error('Database not available. This application must run in its desktop environment.');
     }
     
     try {
+      setPendingQueries(prev => prev + 1);
       return await window.electronAPI.trackStockMovement(movement);
     } catch (error) {
       console.error('Error tracking stock movement:', error);
       throw error;
+    } finally {
+      setPendingQueries(prev => Math.max(0, prev - 1));
     }
-  };
+  }, []);
 
-  const savePDF = async (pdfData: Uint8Array, filename: string) => {
+  const savePDF = useCallback(async (pdfData: Uint8Array, filename: string) => {
     if (!window.electronAPI) {
       throw new Error('PDF save not available. This application must run in its desktop environment.');
     }
@@ -104,9 +121,9 @@ export function useDatabase() {
       console.error('Error saving PDF:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const backupDatabase = async () => {
+  const backupDatabase = useCallback(async () => {
     if (!window.electronAPI) {
       throw new Error('Database backup not available. This application must run in its desktop environment.');
     }
@@ -117,9 +134,9 @@ export function useDatabase() {
       console.error('Error backing up database:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const restoreDatabase = async () => {
+  const restoreDatabase = useCallback(async () => {
     if (!window.electronAPI) {
       throw new Error('Database restore not available. This application must run in its desktop environment.');
     }
@@ -130,9 +147,9 @@ export function useDatabase() {
       console.error('Error restoring database:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const activateApp = async (activationCode: string) => {
+  const activateApp = useCallback(async (activationCode: string) => {
     if (!window.electronAPI) {
       throw new Error('Activation not available. This application must run in its desktop environment.');
     }
@@ -143,9 +160,9 @@ export function useDatabase() {
       console.error('Error activating app:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const checkActivation = async () => {
+  const checkActivation = useCallback(async () => {
     if (!window.electronAPI) {
       throw new Error('Activation check not available. This application must run in its desktop environment.');
     }
@@ -158,19 +175,20 @@ export function useDatabase() {
       console.error('Error checking activation:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const quitApp = () => {
+  const quitApp = useCallback(() => {
     if (window.electronAPI) {
       window.electronAPI.quitApp();
     }
-  };
+  }, []);
 
   return {
     isElectron,
     isReady,
     isActivated,
     dbError,
+    isBusy: pendingQueries > 0,
     query,
     getFactures,
     trackStockMovement,
