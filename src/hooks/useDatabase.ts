@@ -7,7 +7,7 @@ declare global {
       getFactures: () => Promise<any[]>;
       trackStockMovement: (movement: any) => Promise<{ success: boolean; error?: string; currentStock?: number }>;
       savePDF: (pdfData: Uint8Array, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
-      checkForUpdates: () => Promise<{ updateAvailable: boolean; version?: string }>;
+      checkForUpdates: () => Promise<{ updateAvailable: boolean; version?: string; error?: string }>;
       getAppVersion: () => Promise<string>;
       backupDatabase: () => Promise<{ success: boolean; path?: string; error?: string }>;
       restoreDatabase: () => Promise<{ success: boolean; error?: string }>;
