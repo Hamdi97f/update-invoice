@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, Package, ShoppingCart, Store, Filter } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, ShoppingCart, Store, Filter, Upload } from 'lucide-react';
 import { Produit } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency } from '../utils/currency';
 import ProduitForm from './ProduitForm';
+import CSVImportDialog from './CSVImportDialog';
+import { ImportResult } from '../utils/csvImporter';
 
 const ProduitsList: React.FC = () => {
   const [produits, setProduits] = useState<Produit[]>([]);
@@ -13,6 +15,7 @@ const ProduitsList: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingProduit, setEditingProduit] = useState<Produit | null>(null);
   const [newProductType, setNewProductType] = useState<'vente' | 'achat'>('vente');
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const { query, isReady } = useDatabase();
 
   useEffect(() => {
@@ -107,6 +110,17 @@ const ProduitsList: React.FC = () => {
     }
   };
 
+  const handleImportComplete = (result: ImportResult) => {
+    if (result.success) {
+      // Reload products to show imported data
+      loadProduits();
+      setShowImportDialog(false);
+      
+      // Show success message
+      alert(`Importation réussie!\n${result.imported} produit(s) importé(s)\n${result.duplicates} doublon(s) ignoré(s)\n${result.skipped} ligne(s) ignorée(s)`);
+    }
+  };
+
   const getTypeIcon = (type: 'vente' | 'achat') => {
     return type === 'vente' ? Store : ShoppingCart;
   };
@@ -192,6 +206,13 @@ const ProduitsList: React.FC = () => {
             </button>
           </div>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowImportDialog(true)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors duration-200 flex items-center space-x-2"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Importer CSV</span>
+            </button>
             <button
               onClick={() => handleCreateNew('vente')}
               className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 flex items-center space-x-2"
@@ -419,6 +440,16 @@ const ProduitsList: React.FC = () => {
         onSave={handleSave}
         produit={editingProduit}
         defaultType={newProductType}
+      />
+
+      {/* CSV Import Dialog */}
+      <CSVImportDialog
+        isOpen={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+        type="produits"
+        existingData={produits}
+        onImportComplete={handleImportComplete}
+        query={query}
       />
     </>
   );

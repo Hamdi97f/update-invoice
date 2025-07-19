@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, User } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, User, Upload } from 'lucide-react';
 import { Client } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import ClientForm from './ClientForm';
+import CSVImportDialog from './CSVImportDialog';
+import { ImportResult } from '../utils/csvImporter';
 
 const ClientsList: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
@@ -10,6 +12,7 @@ const ClientsList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const { query, isReady } = useDatabase();
 
   useEffect(() => {
@@ -100,6 +103,17 @@ const ClientsList: React.FC = () => {
     }
   };
 
+  const handleImportComplete = (result: ImportResult) => {
+    if (result.success) {
+      // Reload clients to show imported data
+      loadClients();
+      setShowImportDialog(false);
+      
+      // Show success message
+      alert(`Importation réussie!\n${result.imported} client(s) importé(s)\n${result.duplicates} doublon(s) ignoré(s)\n${result.skipped} ligne(s) ignorée(s)`);
+    }
+  };
+
   if (!isReady) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -148,6 +162,13 @@ const ClientsList: React.FC = () => {
           >
             <Plus className="w-5 h-5" />
             <span>Nouveau client</span>
+          </button>
+          <button
+            onClick={() => setShowImportDialog(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 flex items-center space-x-2"
+          >
+            <Upload className="w-5 h-5" />
+            <span>Importer CSV</span>
           </button>
         </div>
 
@@ -274,6 +295,16 @@ const ClientsList: React.FC = () => {
         }}
         onSave={handleSave}
         client={editingClient}
+      />
+
+      {/* CSV Import Dialog */}
+      <CSVImportDialog
+        isOpen={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+        type="clients"
+        existingData={clients}
+        onImportComplete={handleImportComplete}
+        query={query}
       />
     </>
   );
