@@ -6,6 +6,7 @@ import { fr } from 'date-fns/locale';
 import { formatCurrency } from './currency';
 import { getCompanyInfo } from './numberGenerator';
 import { numberToWords } from './numberToWords';
+import { getCurrencySymbol, getCurrencyDecimals } from './currency';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
 
@@ -393,12 +394,12 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   
   // Amount in words (if enabled)
   if (settings.amountInWords.enabled) {
-    const amountInWords = numberToWords(documentData.totalTTC);
+    const amountInWords = numberToWords(documentData.totalTTC, getCurrencySymbol());
     doc.setFontSize(settings.amountInWords.fontSize);
     doc.setTextColor(...hexToRgb(settings.amountInWords.color));
     doc.setFont('helvetica', 'bold');
     
-    const amountText = `Arrêté la présente facture à la somme de : ${amountInWords}`;
+    const amountText = `Arrêté la présente ${documentData.type === 'facture' ? 'facture' : 'document'} à la somme de : ${amountInWords}`;
     const maxWidth = pageWidth - settings.margins.left - settings.margins.right - 90;
     
     let amountX = settings.margins.left;

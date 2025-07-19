@@ -37,7 +37,7 @@ interface InvoiceSettings {
 }
 
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'taxes' | 'templates' | 'invoice' | 'updates' | 'backup'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'taxes' | 'templates' | 'invoice' | 'updates' | 'backup' | 'currency'>('company');
   const [settings, setSettings] = useState<NumberingSettings>({
     factures: { prefix: 'FA', startNumber: 1, currentNumber: 1, includeYear: true },
     devis: { prefix: 'DV', startNumber: 1, currentNumber: 1, includeYear: true },
@@ -60,6 +60,12 @@ const Settings: React.FC = () => {
 
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings>({
     useEcheanceDate: true
+  });
+
+  const [currencySettings, setCurrencySettingsState] = useState({
+    symbol: 'TND',
+    decimals: 3,
+    position: 'after' as 'before' | 'after'
   });
 
   const [taxes, setTaxes] = useState<Tax[]>([]);
@@ -95,6 +101,11 @@ const Settings: React.FC = () => {
   useEffect(() => {
     invoiceSettingsRef.current = invoiceSettings;
   }, [invoiceSettings]);
+
+  useEffect(() => {
+    // Update localStorage when currency settings change
+    localStorage.setItem('currencySettings', JSON.stringify(currencySettings));
+  }, [currencySettings]);
 
   useEffect(() => {
     if (isReady) {
@@ -152,6 +163,28 @@ const Settings: React.FC = () => {
           ['invoiceSettings', JSON.stringify(defaultInvoiceSettings)]
         );
       }
+
+      // Load currency settings
+      try {
+        const currencyResult = await query('SELECT value FROM settings WHERE key = ?', ['currencySettings']);
+        if (currencyResult.length > 0) {
+          const loadedCurrencySettings = JSON.parse(currencyResult[0].value);
+          setCurrencySettingsState(loadedCurrencySettings);
+          // Also save to localStorage for immediate use
+          localStorage.setItem('currencySettings', JSON.stringify(loadedCurrencySettings));
+        } else {
+          // Set default and save
+          const defaultCurrencySettings = { symbol: 'TND', decimals: 3, position: 'after' };
+          await query(
+            'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+            ['currencySettings', JSON.stringify(defaultCurrencySettings)]
+          );
+          setCurrencySettingsState(defaultCurrencySettings);
+          localStorage.setItem('currencySettings', JSON.stringify(defaultCurrencySettings));
+        }
+      } catch (error) {
+        console.error('Error loading currency settings:', error);
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
     }
@@ -178,6 +211,11 @@ const Settings: React.FC = () => {
       await query(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
         ['invoiceSettings', JSON.stringify(invoiceSettingsRef.current)]
+      );
+
+      await query(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['currencySettings', JSON.stringify(currencySettings)]
       );
 
       setSaveSuccess(true);
@@ -211,6 +249,13 @@ const Settings: React.FC = () => {
 
   const handleInvoiceSettingsChange = (field: string, value: boolean) => {
     setInvoiceSettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleCurrencySettingsChange = (field: string, value: string | number) => {
+    setCurrencySettingsState(prev => ({
       ...prev,
       [field]: value
     }));
@@ -322,6 +367,7 @@ const Settings: React.FC = () => {
     { id: 'company', label: 'Entreprise', icon: SettingsIcon },
     { id: 'numbering', label: 'Numérotation', icon: FileText },
     { id: 'invoice', label: 'Factures', icon: Receipt },
+    { id: 'currency', label: 'Devise', icon: Calculator },
     { id: 'taxes', label: 'Taxes', icon: Calculator },
     { id: 'templates', label: 'Modèles & Design', icon: Palette },
     { id: 'backup', label: 'Sauvegarde', icon: Database },
@@ -721,6 +767,131 @@ const Settings: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'currency' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Paramètres de devise</h3>
+          
+          <div className="space-y-6">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center mb-4">
+                <Calculator className="w-5 h-5 mr-2 text-blue-600" />
+                <h4 className="text-md font-medium text-gray-900">Configuration de la devise</h4>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Symbole de devise
+                  </label>
+                  <input
+                    type="text"
+                    value={currencySettings.symbol}
+                    onChange={(e) => handleCurrencySettingsChange('symbol', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="TND"
+                    maxLength={10}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Exemples: TND, EUR, USD, MAD, etc.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nombre de décimales
+                  </label>
+                  <select
+                    value={currencySettings.decimals}
+                    onChange={(e) => handleCurrencySettingsChange('decimals', parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value={0}>0 décimale (ex: 100 TND)</option>
+                    <option value={1}>1 décimale (ex: 100.0 TND)</option>
+                    <option value={2}>2 décimales (ex: 100.00 TND)</option>
+                    <option value={3}>3 décimales (ex: 100.000 TND)</option>
+                    <option value={4}>4 décimales (ex: 100.0000 TND)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Position du symbole
+                  </label>
+                  <select
+                    value={currencySettings.position}
+                    onChange={(e) => handleCurrencySettingsChange('position', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="after">Après le montant (100.000 TND)</option>
+                    <option value="before">Avant le montant (TND 100.000)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Aperçu
+                  </label>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-md">
+                    <span className="text-lg font-medium text-blue-600">
+                      {currencySettings.position === 'before' 
+                        ? `${currencySettings.symbol} ${(1234.567).toFixed(currencySettings.decimals)}`
+                        : `${(1234.567).toFixed(currencySettings.decimals)} ${currencySettings.symbol}`
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <Calculator className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
+                <div>
+                  <p className="text-sm text-blue-700">
+                    <strong>Important :</strong> Ces paramètres affectent l'affichage des montants dans toute l'application.
+                  </p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    Les modifications seront appliquées immédiatement après la sauvegarde et affecteront tous les documents générés.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="text-md font-medium text-gray-900 mb-3">Devises courantes</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {[
+                  { symbol: 'TND', name: 'Dinar Tunisien', decimals: 3 },
+                  { symbol: 'EUR', name: 'Euro', decimals: 2 },
+                  { symbol: 'USD', name: 'Dollar US', decimals: 2 },
+                  { symbol: 'MAD', name: 'Dirham Marocain', decimals: 2 },
+                  { symbol: 'DZD', name: 'Dinar Algérien', decimals: 2 },
+                  { symbol: 'GBP', name: 'Livre Sterling', decimals: 2 },
+                  { symbol: 'CHF', name: 'Franc Suisse', decimals: 2 },
+                  { symbol: 'CAD', name: 'Dollar Canadien', decimals: 2 }
+                ].map((currency) => (
+                  <button
+                    key={currency.symbol}
+                    onClick={() => {
+                      setCurrencySettingsState(prev => ({
+                        ...prev,
+                        symbol: currency.symbol,
+                        decimals: currency.decimals
+                      }));
+                    }}
+                    className="p-2 text-xs bg-white border border-gray-200 rounded hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                    title={currency.name}
+                  >
+                    <div className="font-medium">{currency.symbol}</div>
+                    <div className="text-gray-500">{currency.decimals} déc.</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'taxes' && (
         <div className="bg-white rounded-lg shadow-sm border p-6">
           <TaxConfiguration onTaxesChange={setTaxes} />
@@ -946,7 +1117,7 @@ const Settings: React.FC = () => {
       )}
 
       {/* Save Button - Only show for company, numbering, and invoice tabs */}
-      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice') && (
+      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice' || activeTab === 'currency') && (
         <div className="flex justify-end">
           <button
             onClick={saveSettings}
