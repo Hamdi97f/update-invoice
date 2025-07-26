@@ -526,8 +526,8 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce devis ?')) {
       try {
-        await query('DELETE FROM devis WHERE id = ?', [id]);
         await query('DELETE FROM lignes_devis WHERE devisId = ?', [id]);
+        await query('DELETE FROM devis WHERE id = ?', [id]);
         
         setDevis(devis.filter(d => d.id !== id));
       } catch (error) {

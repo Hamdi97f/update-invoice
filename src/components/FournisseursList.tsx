@@ -91,14 +91,12 @@ const FournisseursList: React.FC = () => {
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce fournisseur ?')) {
       try {
-        // First check if fournisseur is used in any documents
-        const commandesCount = await query('SELECT COUNT(*) as count FROM commandes_fournisseur WHERE fournisseurId = ?', [id]);
-        
-        if (commandesCount[0].count > 0) {
-          alert('Ce fournisseur ne peut pas être supprimé car il est utilisé dans des commandes fournisseur.');
-          return;
+        // Delete all related commandes first
+        const commandes = await query('SELECT id FROM commandes_fournisseur WHERE fournisseurId = ?', [id]);
+        for (const commande of commandes) {
+          await query('DELETE FROM lignes_commande_fournisseur WHERE commandeId = ?', [commande.id]);
         }
-        
+        await query('DELETE FROM commandes_fournisseur WHERE fournisseurId = ?', [id]);
         await query('DELETE FROM fournisseurs WHERE id = ?', [id]);
         setFournisseurs(fournisseurs.filter(f => f.id !== id));
       } catch (error) {

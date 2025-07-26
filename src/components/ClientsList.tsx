@@ -84,15 +84,25 @@ const ClientsList: React.FC = () => {
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce client ?')) {
       try {
-        // First check if client is used in any documents
-        const facturesCount = await query('SELECT COUNT(*) as count FROM factures WHERE clientId = ?', [id]);
-        const devisCount = await query('SELECT COUNT(*) as count FROM devis WHERE clientId = ?', [id]);
-        const blCount = await query('SELECT COUNT(*) as count FROM bons_livraison WHERE clientId = ?', [id]);
-        
-        if (facturesCount[0].count > 0 || devisCount[0].count > 0 || blCount[0].count > 0) {
-          alert('Ce client ne peut pas être supprimé car il est utilisé dans des documents (factures, devis ou bons de livraison).');
-          return;
+        // Delete all related documents first
+        const factures = await query('SELECT id FROM factures WHERE clientId = ?', [id]);
+        for (const facture of factures) {
+          await query('DELETE FROM payments WHERE factureId = ?', [facture.id]);
+          await query('DELETE FROM lignes_facture WHERE factureId = ?', [facture.id]);
         }
+        await query('DELETE FROM factures WHERE clientId = ?', [id]);
+        
+        const devis = await query('SELECT id FROM devis WHERE clientId = ?', [id]);
+        for (const devi of devis) {
+          await query('DELETE FROM lignes_devis WHERE devisId = ?', [devi.id]);
+        }
+        await query('DELETE FROM devis WHERE clientId = ?', [id]);
+        
+        const bonsLivraison = await query('SELECT id FROM bons_livraison WHERE clientId = ?', [id]);
+        for (const bon of bonsLivraison) {
+          await query('DELETE FROM lignes_bon_livraison WHERE bonLivraisonId = ?', [bon.id]);
+        }
+        await query('DELETE FROM bons_livraison WHERE clientId = ?', [id]);
         
         await query('DELETE FROM clients WHERE id = ?', [id]);
         setClients(clients.filter(c => c.id !== id));

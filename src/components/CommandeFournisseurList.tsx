@@ -271,8 +271,8 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette commande fournisseur ?')) {
       try {
-        await query('DELETE FROM commandes_fournisseur WHERE id = ?', [id]);
         await query('DELETE FROM lignes_commande_fournisseur WHERE commandeId = ?', [id]);
+        await query('DELETE FROM commandes_fournisseur WHERE id = ?', [id]);
         
         setCommandes(commandes.filter(cf => cf.id !== id));
       } catch (error) {

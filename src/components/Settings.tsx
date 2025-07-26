@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, FileText, Receipt, Truck, ShoppingCart, Settings as SettingsIcon, Calculator, Palette, Upload, Eye, RefreshCw, Info, Database, Download, Upload as UploadIcon } from 'lucide-react';
+import { Save, FileText, Receipt, Truck, ShoppingCart, Settings as SettingsIcon, Calculator, Palette, Upload, Eye, RefreshCw, Info, Database, Download, Upload as UploadIcon, Shield } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
 import TaxConfiguration from './TaxConfiguration';
 import DocumentTemplateSettings from './DocumentTemplateSettings';
@@ -66,6 +66,14 @@ const Settings: React.FC = () => {
     symbol: 'TND',
     decimals: 3,
     position: 'after' as 'before' | 'after'
+  });
+
+  // Security settings
+  const [securitySettings, setSecuritySettings] = useState({
+    passwordEnabled: false,
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
   });
 
   const [taxes, setTaxes] = useState<Tax[]>([]);
@@ -185,6 +193,16 @@ const Settings: React.FC = () => {
       } catch (error) {
         console.error('Error loading currency settings:', error);
       }
+
+      // Load security settings
+      try {
+        const passwordResult = await query('SELECT value FROM settings WHERE key = ?', ['appPassword']);
+        if (passwordResult.length > 0) {
+          setSecuritySettings(prev => ({ ...prev, passwordEnabled: true }));
+        }
+      } catch (error) {
+        console.error('Error loading security settings:', error);
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
     }
@@ -217,6 +235,16 @@ const Settings: React.FC = () => {
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
         ['currencySettings', JSON.stringify(currencySettings)]
       );
+
+      // Save security settings if password is being set
+      if (securitySettings.passwordEnabled && securitySettings.newPassword) {
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['appPassword', securitySettings.newPassword]
+        );
+      } else if (!securitySettings.passwordEnabled) {
+        await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
+      }
 
       setSaveSuccess(true);
       setTimeout(() => {
@@ -259,6 +287,75 @@ const Settings: React.FC = () => {
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleSecurityChange = (field: string, value: string | boolean) => {
+    setSecuritySettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handlePasswordSave = async () => {
+    if (!securitySettings.passwordEnabled) {
+      // Disable password protection
+      try {
+        if (isElectron) {
+          await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
+        } else {
+          localStorage.removeItem('appPassword');
+        }
+        setSecuritySettings({
+          passwordEnabled: false,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        });
+        alert('Protection par mot de passe désactivée');
+      } catch (error) {
+        console.error('Error disabling password:', error);
+        alert('Erreur lors de la désactivation du mot de passe');
+      }
+      return;
+    }
+
+    if (!securitySettings.newPassword) {
+      alert('Veuillez entrer un nouveau mot de passe');
+      return;
+    }
+
+    if (securitySettings.newPassword !== securitySettings.confirmPassword) {
+      alert('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    if (securitySettings.newPassword.length < 4) {
+      alert('Le mot de passe doit contenir au moins 4 caractères');
+      return;
+    }
+
+    try {
+      if (isElectron) {
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['appPassword', securitySettings.newPassword]
+        );
+      } else {
+        localStorage.setItem('appPassword', securitySettings.newPassword);
+      }
+
+      setSecuritySettings({
+        passwordEnabled: true,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+
+      alert('Mot de passe configuré avec succès');
+    } catch (error) {
+      console.error('Error saving password:', error);
+      alert('Erreur lors de la sauvegarde du mot de passe');
+    }
   };
 
   const resetCurrentNumbers = async (docType: keyof NumberingSettings) => {
@@ -368,6 +465,7 @@ const Settings: React.FC = () => {
     { id: 'numbering', label: 'Numérotation', icon: FileText },
     { id: 'invoice', label: 'Factures', icon: Receipt },
     { id: 'currency', label: 'Devise', icon: Calculator },
+    { id: 'security', label: 'Sécurité', icon: Settings },
     { id: 'taxes', label: 'Taxes', icon: Calculator },
     { id: 'templates', label: 'Modèles & Design', icon: Palette },
     { id: 'backup', label: 'Sauvegarde', icon: Database },
@@ -888,6 +986,126 @@ const Settings: React.FC = () => {
                 ))}
               </div>
             </div>
+      {activeTab === 'security' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Sécurité de l'application</h3>
+          
+          <div className="space-y-6">
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Settings className="w-5 h-5 mr-2 text-blue-600" />
+                <h4 className="text-md font-medium text-gray-900">Protection par mot de passe</h4>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <label className="font-medium text-gray-900">Activer la protection par mot de passe</label>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Protège l'accès à l'application avec un mot de passe
+                    </p>
+                  </div>
+                  <div className="relative inline-block w-12 mr-2 align-middle select-none">
+                    <input
+                      type="checkbox"
+                      id="toggle-password"
+                      checked={securitySettings.passwordEnabled}
+                      onChange={(e) => handleSecurityChange('passwordEnabled', e.target.checked)}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor="toggle-password"
+                      className={`block overflow-hidden h-6 rounded-full cursor-pointer ${
+                        securitySettings.passwordEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform ${
+                          securitySettings.passwordEnabled ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      ></span>
+                    </label>
+                  </div>
+                </div>
+
+                {securitySettings.passwordEnabled && (
+                  <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nouveau mot de passe
+                      </label>
+                      <input
+                        type="password"
+                        value={securitySettings.newPassword}
+                        onChange={(e) => handleSecurityChange('newPassword', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Entrez un mot de passe"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Confirmer le mot de passe
+                      </label>
+                      <input
+                        type="password"
+                        value={securitySettings.confirmPassword}
+                        onChange={(e) => handleSecurityChange('confirmPassword', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Confirmez le mot de passe"
+                      />
+                    </div>
+          </div>
+                    <button
+                      onClick={handlePasswordSave}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      Configurer le mot de passe
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+        </div>
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Shield className="w-5 h-5 mr-2 text-green-600" />
+                <h4 className="text-md font-medium text-gray-900">Mot de passe maître</h4>
+              </div>
+              
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <Shield className="w-5 h-5 text-green-600 mr-2 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-green-800 font-medium">
+                      Mot de passe maître activé
+                    </p>
+                    <p className="text-sm text-green-700 mt-1">
+                      Le mot de passe "TOPPACK" peut toujours déverrouiller l'application, 
+                      même si un mot de passe utilisateur est défini. Cette fonctionnalité 
+                      permet un accès de récupération en cas d'oubli du mot de passe principal.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+      )}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <Settings className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" />
+                <div>
+                  <p className="text-sm text-yellow-800 font-medium">
+                    Important : Sécurité des données
+                  </p>
+                  <ul className="text-sm text-yellow-700 mt-1 space-y-1">
+                    <li>• Choisissez un mot de passe fort et unique</li>
+                    <li>• Ne partagez jamais votre mot de passe</li>
+                    <li>• Le mot de passe maître "TOPPACK" est intégré pour la récupération</li>
+                    <li>• Sauvegardez régulièrement vos données</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1117,7 +1335,7 @@ const Settings: React.FC = () => {
       )}
 
       {/* Save Button - Only show for company, numbering, and invoice tabs */}
-      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice' || activeTab === 'currency') && (
+      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice' || activeTab === 'currency' || activeTab === 'security') && (
         <div className="flex justify-end">
           <button
             onClick={saveSettings}

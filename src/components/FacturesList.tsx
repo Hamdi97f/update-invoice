@@ -390,22 +390,11 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette facture ?')) {
       try {
-        // Check if facture has payments
-        const paymentsCheck = await query('SELECT COUNT(*) as count FROM payments WHERE factureId = ?', [id]);
-        if (paymentsCheck[0].count > 0) {
-          alert('Cette facture ne peut pas être supprimée car elle a des paiements associés.');
-          return;
-        }
-        
-        // Check if facture is linked to bons de livraison
-        const blCheck = await query('SELECT COUNT(*) as count FROM bons_livraison WHERE factureId = ?', [id]);
-        if (blCheck[0].count > 0) {
-          alert('Cette facture ne peut pas être supprimée car elle est liée à des bons de livraison.');
-          return;
-        }
-        
-        await query('DELETE FROM factures WHERE id = ?', [id]);
+        // Delete related records first
+        await query('DELETE FROM payments WHERE factureId = ?', [id]);
+        await query('UPDATE bons_livraison SET factureId = NULL WHERE factureId = ?', [id]);
         await query('DELETE FROM lignes_facture WHERE factureId = ?', [id]);
+        await query('DELETE FROM factures WHERE id = ?', [id]);
         
         setFactures(factures.filter(f => f.id !== id));
         

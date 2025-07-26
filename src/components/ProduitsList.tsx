@@ -90,17 +90,12 @@ const ProduitsList: React.FC = () => {
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) {
       try {
-        // First check if product is used in any documents
-        const facturesCount = await query('SELECT COUNT(*) as count FROM lignes_facture WHERE produitId = ?', [id]);
-        const devisCount = await query('SELECT COUNT(*) as count FROM lignes_devis WHERE produitId = ?', [id]);
-        const blCount = await query('SELECT COUNT(*) as count FROM lignes_bon_livraison WHERE produitId = ?', [id]);
-        const cfCount = await query('SELECT COUNT(*) as count FROM lignes_commande_fournisseur WHERE produitId = ?', [id]);
-        
-        if (facturesCount[0].count > 0 || devisCount[0].count > 0 || blCount[0].count > 0 || cfCount[0].count > 0) {
-          alert('Ce produit ne peut pas être supprimé car il est utilisé dans des documents (factures, devis, bons de livraison ou commandes fournisseur).');
-          return;
-        }
-        
+        // Delete all related document lines first
+        await query('DELETE FROM lignes_facture WHERE produitId = ?', [id]);
+        await query('DELETE FROM lignes_devis WHERE produitId = ?', [id]);
+        await query('DELETE FROM lignes_bon_livraison WHERE produitId = ?', [id]);
+        await query('DELETE FROM lignes_commande_fournisseur WHERE produitId = ?', [id]);
+        await query('DELETE FROM stock_movements WHERE produitId = ?', [id]);
         await query('DELETE FROM produits WHERE id = ?', [id]);
         setProduits(produits.filter(p => p.id !== id));
       } catch (error) {

@@ -13,6 +13,7 @@ import StockPage from './components/StockPage';
 import Rapport from './components/Rapport';
 import Settings from './components/Settings';
 import ActivationDialog from './components/ActivationDialog';
+import PasswordProtection from './components/PasswordProtection';
 import { Facture, Devis, BonLivraison, CommandeFournisseur } from './types';
 import { useDatabase } from './hooks/useDatabase';
 
@@ -21,6 +22,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [showActivation, setShowActivation] = useState(false);
+  const [showPasswordProtection, setShowPasswordProtection] = useState(false);
+  const [isPasswordChecked, setIsPasswordChecked] = useState(false);
   const { isReady, isActivated, checkActivation, dbError: databaseError } = useDatabase();
 
   useEffect(() => {
@@ -29,6 +32,9 @@ function App() {
       checkActivation().then(result => {
         if (!result.activated) {
           setShowActivation(true);
+        } else {
+          // Check password protection after activation
+          checkPasswordProtection();
         }
         setIsLoading(false);
       }).catch(error => {
@@ -48,6 +54,35 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [isReady, databaseError]);
+
+  const checkPasswordProtection = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.dbQuery('SELECT value FROM settings WHERE key = ?', ['appPassword']);
+        if (result.length > 0) {
+          setShowPasswordProtection(true);
+        } else {
+          setIsPasswordChecked(true);
+        }
+      } else {
+        // For web version
+        const savedPassword = localStorage.getItem('appPassword');
+        if (savedPassword) {
+          setShowPasswordProtection(true);
+        } else {
+          setIsPasswordChecked(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking password protection:', error);
+      setIsPasswordChecked(true);
+    }
+  };
+
+  const handlePasswordUnlock = () => {
+    setShowPasswordProtection(false);
+    setIsPasswordChecked(true);
+  };
 
   const handleCreateNewFacture = () => {
     console.log('Create new invoice');
@@ -133,6 +168,22 @@ function App() {
 
   if (showActivation) {
     return <ActivationDialog isOpen={true} onClose={() => setShowActivation(false)} />;
+  }
+
+  if (showPasswordProtection) {
+    return <PasswordProtection isOpen={true} onUnlock={handlePasswordUnlock} />;
+  }
+
+  if (!isPasswordChecked) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="text-center p-8 bg-white rounded-lg shadow-lg">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Vérification de sécurité</h2>
+          <p className="text-gray-600">Vérification des paramètres de protection...</p>
+        </div>
+      </div>
+    );
   }
 
   const renderCurrentPage = () => {

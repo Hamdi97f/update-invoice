@@ -546,15 +546,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce bon de livraison ?')) {
       try {
-        // Check if bon de livraison is linked to a facture
-        const factureCheck = await query('SELECT factureId FROM bons_livraison WHERE id = ?', [id]);
-        if (factureCheck.length > 0 && factureCheck[0].factureId) {
-          alert('Ce bon de livraison ne peut pas être supprimé car il est lié à une facture.');
-          return;
-        }
-        
-        await query('DELETE FROM bons_livraison WHERE id = ?', [id]);
         await query('DELETE FROM lignes_bon_livraison WHERE bonLivraisonId = ?', [id]);
+        await query('DELETE FROM bons_livraison WHERE id = ?', [id]);
         
         setBonsLivraison(bonsLivraison.filter(bl => bl.id !== id));
       } catch (error) {
