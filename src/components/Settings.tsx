@@ -37,7 +37,7 @@ interface InvoiceSettings {
 }
 
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'taxes' | 'templates' | 'invoice' | 'updates' | 'backup' | 'currency' | 'security'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'taxes' | 'templates' | 'invoice' | 'updates' | 'backup' | 'currency'>('company');
   const [settings, setSettings] = useState<NumberingSettings>({
     factures: { prefix: 'FA', startNumber: 1, currentNumber: 1, includeYear: true },
     devis: { prefix: 'DV', startNumber: 1, currentNumber: 1, includeYear: true },
@@ -300,7 +300,7 @@ const Settings: React.FC = () => {
     if (!securitySettings.passwordEnabled) {
       // Disable password protection
       try {
-        if (window.electronAPI) {
+        if (isElectron) {
           await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
         } else {
           localStorage.removeItem('appPassword');
@@ -335,7 +335,7 @@ const Settings: React.FC = () => {
     }
 
     try {
-      if (window.electronAPI) {
+      if (isElectron) {
         await query(
           'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
           ['appPassword', securitySettings.newPassword]
@@ -465,7 +465,7 @@ const Settings: React.FC = () => {
     { id: 'numbering', label: 'Numérotation', icon: FileText },
     { id: 'invoice', label: 'Factures', icon: Receipt },
     { id: 'currency', label: 'Devise', icon: Calculator },
-    { id: 'security', label: 'Sécurité', icon: SettingsIcon },
+    { id: 'security', label: 'Sécurité', icon: Shield },
     { id: 'taxes', label: 'Taxes', icon: Calculator },
     { id: 'templates', label: 'Modèles & Design', icon: Palette },
     { id: 'backup', label: 'Sauvegarde', icon: Database },
@@ -997,7 +997,7 @@ const Settings: React.FC = () => {
           <div className="space-y-6">
             <div className="border border-gray-200 rounded-lg p-6">
               <div className="flex items-center mb-4">
-                <SettingsIcon className="w-5 h-5 mr-2 text-blue-600" />
+                <Shield className="w-5 h-5 mr-2 text-blue-600" />
                 <h4 className="text-md font-medium text-gray-900">Protection par mot de passe</h4>
               </div>
               
@@ -1096,7 +1096,7 @@ const Settings: React.FC = () => {
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div className="flex items-start">
-                <SettingsIcon className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" />
+                <Shield className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" />
                 <div>
                   <p className="text-sm text-yellow-800 font-medium">
                     Important : Sécurité des données
@@ -1339,7 +1339,7 @@ const Settings: React.FC = () => {
       )}
 
       {/* Save Button - Only show for company, numbering, and invoice tabs */}
-      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice' || activeTab === 'currency') && (
+      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice' || activeTab === 'currency' || activeTab === 'security') && (
         <div className="flex justify-end">
           <button
             onClick={saveSettings}
