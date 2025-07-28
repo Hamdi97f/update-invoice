@@ -1071,6 +1071,7 @@ ipcMain.handle('activate-app', async (event, activationCode) => {
     }
     
     const isDemo = sum === 60;
+    const isFull = sum === 75;
     const activationDate = new Date().toISOString();
     const expirationDate = isDemo ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
     
@@ -1078,6 +1079,7 @@ ipcMain.handle('activate-app', async (event, activationCode) => {
     const activationData = {
       activated: true,
       isDemo: isDemo,
+      isFull: isFull,
       activationCode: activationCode,
       activationDate: activationDate,
       expirationDate: expirationDate
@@ -1092,6 +1094,7 @@ ipcMain.handle('activate-app', async (event, activationCode) => {
     
     return { 
       success: true, 
+      isFull: isFull,
       isDemo: isDemo,
       expirationDate: expirationDate
     };
@@ -1121,6 +1124,7 @@ ipcMain.handle('check-activation', () => {
       const expiration = new Date(activationData.expirationDate);
       
       if (now > expiration) {
+        log.info('Demo version has expired, deactivating...');
         // Demo has expired, deactivate
         const expiredActivationData = {
           ...activationData,
@@ -1154,7 +1158,8 @@ ipcMain.handle('check-activation', () => {
     
     // Full activation
     return { 
-      activated: activationData.activated,
+      activated: activationData.activated && !activationData.isDemo,
+      isFull: activationData.isFull || false,
       isDemo: false
     };
   } catch (error) {

@@ -33,6 +33,7 @@ function App() {
       checkActivation().then(result => {
         setActivationStatus(result);
         if (!result.activated || result.expired) {
+          console.log('Activation required:', result);
           setShowActivation(true);
         } else {
           // Check password protection after activation
@@ -89,6 +90,7 @@ function App() {
   // Check for demo expiration periodically
   useEffect(() => {
     if (activationStatus?.isDemo && activationStatus?.activated && !activationStatus?.expired) {
+      console.log('Setting up demo expiration check for:', activationStatus);
       const checkExpiration = () => {
         checkActivation().then(result => {
           setActivationStatus(result);
@@ -98,7 +100,7 @@ function App() {
         });
       };
       
-      // Check every hour
+      // Check every hour for demo expiration
       const interval = setInterval(checkExpiration, 60 * 60 * 1000);
       
       return () => clearInterval(interval);

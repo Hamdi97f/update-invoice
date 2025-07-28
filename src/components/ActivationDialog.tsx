@@ -9,6 +9,7 @@ interface ActivationDialogProps {
 
 const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) => {
   const [activationCode, setActivationCode] = useState('');
+  const [showDemoInfo, setShowDemoInfo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isActivated, setIsActivated] = useState(false);
@@ -22,6 +23,7 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
       setError(null);
       setIsSubmitting(false);
       setIsActivated(false);
+      setShowDemoInfo(false);
       setActivationResult(null);
     }
   }, [isOpen]);
@@ -71,6 +73,17 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
     }
   };
 
+  const generateDemoCode = () => {
+    // Generate a demo code with sum = 60
+    const digits = [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0]; // Sum = 60
+    // Shuffle the digits for randomness
+    for (let i = digits.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [digits[i], digits[j]] = [digits[j], digits[i]];
+    }
+    return digits.join('');
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -94,12 +107,12 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
             <div className="text-center py-6">
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-xl font-medium text-green-700 mb-2">
-                {activationResult?.isDemo ? 'Version de démonstration activée!' : 'Activation réussie!'}
+                {activationResult?.isDemo ? 'Version de démonstration activée!' : 'Activation complète réussie!'}
               </h3>
               {activationResult?.isDemo ? (
                 <div className="space-y-2">
                   <p className="text-gray-600">
-                    Vous avez activé la version de démonstration de Facturation Pro.
+                    Vous avez activé la version de démonstration de 7 jours de Facturation Pro.
                   </p>
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                     <p className="text-yellow-800 font-medium">
@@ -109,9 +122,14 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
                       Expiration le {activationResult.expirationDate ? new Date(activationResult.expirationDate).toLocaleDateString('fr-FR') : ''}
                     </p>
                   </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+                    <p className="text-blue-800 text-sm">
+                      💡 <strong>Astuce :</strong> Pour obtenir un code d'activation complet, contactez le support technique.
+                    </p>
+                  </div>
                 </div>
               ) : (
-                <p className="text-gray-600">Merci d'avoir activé Facturation Pro.</p>
+                <p className="text-gray-600">Merci d'avoir activé Facturation Pro. Votre licence est maintenant active de façon permanente.</p>
               )}
             </div>
           ) : (
@@ -125,11 +143,11 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
                 <div className="text-sm text-blue-700 space-y-1">
                   <div className="flex items-center">
                     <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                    <span><strong>Code complet :</strong> 15 chiffres dont la somme = 75 (activation permanente)</span>
+                    <span><strong>Code complet :</strong> 15 chiffres dont la somme = 75 (licence permanente)</span>
                   </div>
                   <div className="flex items-center">
                     <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                    <span><strong>Code de démonstration :</strong> 15 chiffres dont la somme = 60 (7 jours d'essai)</span>
+                    <span><strong>Code de démonstration :</strong> 15 chiffres dont la somme = 60 (essai gratuit de 7 jours)</span>
                   </div>
                 </div>
               </div>
@@ -159,10 +177,33 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
                   )}
                 </div>
                 
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setShowDemoInfo(!showDemoInfo)}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    {showDemoInfo ? 'Masquer' : 'Générer un code de démonstration'}
+                  </button>
+                </div>
+                
+                {showDemoInfo && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 mb-2">
+                      <strong>Code de démonstration exemple :</strong>
+                    </p>
+                    <code className="bg-white px-2 py-1 rounded border text-yellow-900 font-mono">
+                      {generateDemoCode()}
+                    </code>
+                    <p className="text-xs text-yellow-700 mt-2">
+                      Ce code vous donnera accès à toutes les fonctionnalités pendant 7 jours.
+                    </p>
+                  </div>
+                )}
+                
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-blue-700">
-                    <strong>Note:</strong> Le code d'activation complet vous a été fourni lors de l'achat du logiciel. 
-                    Pour tester l'application, vous pouvez utiliser un code de démonstration de 7 jours.
+                    <strong>Note:</strong> Le code d'activation complet vous est fourni lors de l'achat du logiciel. 
+                    Pour tester l'application, vous pouvez utiliser un code de démonstration qui vous donne accès à toutes les fonctionnalités pendant 7 jours.
                   </p>
                 </div>
               </div>

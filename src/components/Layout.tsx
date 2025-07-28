@@ -61,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
         
         {/* Demo Status Banner */}
         {activationStatus?.isDemo && activationStatus?.activated && !activationStatus?.expired && (
-          <div className="bg-yellow-500 text-white px-4 py-2 text-center text-sm">
+          <div className="bg-yellow-500 text-white px-4 py-2 text-center text-sm font-medium">
             <div className="font-medium">Version de démonstration</div>
             <div className="text-xs">
               {activationStatus.daysRemaining > 0 
@@ -74,7 +74,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
         
         {activationStatus?.expired && (
           <div className="bg-red-500 text-white px-4 py-2 text-center text-sm font-medium">
-            Période d'essai expirée
+            ⚠️ Période d'essai expirée - Activation requise
           </div>
         )}
         
