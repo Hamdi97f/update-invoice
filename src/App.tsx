@@ -24,13 +24,15 @@ function App() {
   const [showActivation, setShowActivation] = useState(false);
   const [showPasswordProtection, setShowPasswordProtection] = useState(false);
   const [isPasswordChecked, setIsPasswordChecked] = useState(false);
+  const [activationStatus, setActivationStatus] = useState<any>(null);
   const { isReady, isActivated, checkActivation, dbError: databaseError } = useDatabase();
 
   useEffect(() => {
     // Check if database is ready
     if (isReady) {
       checkActivation().then(result => {
-        if (!result.activated) {
+        setActivationStatus(result);
+        if (!result.activated || result.expired) {
           setShowActivation(true);
         } else {
           // Check password protection after activation
@@ -83,6 +85,25 @@ function App() {
     setShowPasswordProtection(false);
     setIsPasswordChecked(true);
   };
+
+  // Check for demo expiration periodically
+  useEffect(() => {
+    if (activationStatus?.isDemo && activationStatus?.activated && !activationStatus?.expired) {
+      const checkExpiration = () => {
+        checkActivation().then(result => {
+          setActivationStatus(result);
+          if (result.expired) {
+            setShowActivation(true);
+          }
+        });
+      };
+      
+      // Check every hour
+      const interval = setInterval(checkExpiration, 60 * 60 * 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [activationStatus, checkActivation]);
 
   const handleCreateNewFacture = () => {
     console.log('Create new invoice');

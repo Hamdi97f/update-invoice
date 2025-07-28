@@ -1,4 +1,5 @@
 import React, { ReactNode } from 'react';
+import { useDatabase } from '../hooks/useDatabase';
 import { 
   FileText, 
   Receipt, 
@@ -21,6 +22,8 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) => {
+  const [activationStatus, setActivationStatus] = React.useState<any>(null);
+  const { checkActivation } = useDatabase();
   const menuItems = [
     { id: 'dashboard', label: 'Tableau de bord', icon: Home },
     { id: 'factures', label: 'Factures', icon: Receipt },
@@ -36,6 +39,18 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
     { id: 'parametres', label: 'Paramètres', icon: Settings },
   ];
 
+  React.useEffect(() => {
+    const loadActivationStatus = async () => {
+      try {
+        const status = await checkActivation();
+        setActivationStatus(status);
+      } catch (error) {
+        console.error('Error checking activation status:', error);
+      }
+    };
+    loadActivationStatus();
+  }, [checkActivation]);
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
@@ -43,6 +58,26 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
         <div className="flex items-center justify-center h-16 bg-blue-700">
           <h1 className="text-xl font-bold text-white">Facturation Pro</h1>
         </div>
+        
+        {/* Demo Status Banner */}
+        {activationStatus?.isDemo && activationStatus?.activated && !activationStatus?.expired && (
+          <div className="bg-yellow-500 text-white px-4 py-2 text-center text-sm">
+            <div className="font-medium">Version de démonstration</div>
+            <div className="text-xs">
+              {activationStatus.daysRemaining > 0 
+                ? `${activationStatus.daysRemaining} jour(s) restant(s)`
+                : 'Expire aujourd\'hui'
+              }
+            </div>
+          </div>
+        )}
+        
+        {activationStatus?.expired && (
+          <div className="bg-red-500 text-white px-4 py-2 text-center text-sm font-medium">
+            Période d'essai expirée
+          </div>
+        )}
+        
         <nav className="mt-6">
           {menuItems.map((item) => {
             const Icon = item.icon;
