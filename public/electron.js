@@ -1065,16 +1065,22 @@ ipcMain.handle('activate-app', async (event, activationCode) => {
     // Calculate sum of digits
     const sum = activationCode.split('').reduce((acc, digit) => acc + parseInt(digit), 0);
     
-    // Check if sum equals 75
-    if (sum !== 75) {
+    // Check if sum equals 75 (full activation) or 60 (demo activation)
+    if (sum !== 75 && sum !== 60) {
       return { success: false, error: 'Code d\'activation invalide' };
     }
+    
+    const isDemo = sum === 60;
+    const activationDate = new Date().toISOString();
+    const expirationDate = isDemo ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
     
     // Save activation status
     const activationData = {
       activated: true,
+      isDemo: isDemo,
       activationCode: activationCode,
-      activationDate: new Date().toISOString()
+      activationDate: activationDate,
+      expirationDate: expirationDate
     };
     
     db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
@@ -1084,7 +1090,11 @@ ipcMain.handle('activate-app', async (event, activationCode) => {
     
     isActivated = true;
     
-    return { success: true };
+    return { 
+      success: true, 
+      isDemo: isDemo,
+      expirationDate: expirationDate
+    };
   } catch (error) {
     log.error('Error activating app:', error);
     return { success: false, error: error.message };
@@ -1092,7 +1102,65 @@ ipcMain.handle('activate-app', async (event, activationCode) => {
 });
 
 ipcMain.handle('check-activation', () => {
-  return { activated: isActivated };
+  try {
+    if (!db) {
+      return { activated: false };
+    }
+    
+    const activationResult = db.prepare('SELECT value FROM settings WHERE key = ?').get('activation');
+    
+    if (!activationResult) {
+      return { activated: false };
+    }
+    
+    const activationData = JSON.parse(activationResult.value);
+    
+    // Check if it's a demo version and if it has expired
+    if (activationData.isDemo && activationData.expirationDate) {
+      const now = new Date();
+      const expiration = new Date(activationData.expirationDate);
+      
+      if (now > expiration) {
+        // Demo has expired, deactivate
+        const expiredActivationData = {
+          ...activationData,
+          activated: false,
+          expired: true
+        };
+        
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
+          'activation', 
+          JSON.stringify(expiredActivationData)
+        );
+        
+        isActivated = false;
+        
+        return { 
+          activated: false, 
+          isDemo: true, 
+          expired: true,
+          expirationDate: activationData.expirationDate
+        };
+      }
+      
+      // Demo is still valid
+      return { 
+        activated: true, 
+        isDemo: true, 
+        expirationDate: activationData.expirationDate,
+        daysRemaining: Math.ceil((expiration - now) / (1000 * 60 * 60 * 24))
+      };
+    }
+    
+    // Full activation
+    return { 
+      activated: activationData.activated,
+      isDemo: false
+    };
+  } catch (error) {
+    log.error('Error checking activation:', error);
+    return { activated: false };
+  }
 });
 
 ipcMain.handle('quit-app', () => {

@@ -12,7 +12,13 @@ declare global {
       backupDatabase: () => Promise<{ success: boolean; path?: string; error?: string }>;
       restoreDatabase: () => Promise<{ success: boolean; error?: string }>;
       activateApp: (activationCode: string) => Promise<{ success: boolean; error?: string }>;
-      checkActivation: () => Promise<{ activated: boolean }>;
+      checkActivation: () => Promise<{ 
+        activated: boolean; 
+        isDemo?: boolean; 
+        expired?: boolean; 
+        expirationDate?: string; 
+        daysRemaining?: number; 
+      }>;
       quitApp: () => void;
     };
   }
