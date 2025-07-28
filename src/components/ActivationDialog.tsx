@@ -9,7 +9,6 @@ interface ActivationDialogProps {
 
 const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) => {
   const [activationCode, setActivationCode] = useState('');
-  const [showDemoInfo, setShowDemoInfo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isActivated, setIsActivated] = useState(false);
@@ -23,7 +22,6 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
       setError(null);
       setIsSubmitting(false);
       setIsActivated(false);
-      setShowDemoInfo(false);
       setActivationResult(null);
     }
   }, [isOpen]);
@@ -33,15 +31,6 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
     
     // Validate code format (15 digits)
     if (!/^\d{15}$/.test(activationCode)) {
-      setError('Le code doit contenir exactement 15 chiffres.');
-      return;
-    }
-    
-    // Calculate sum of digits
-    const sum = activationCode.split('').reduce((acc, digit) => acc + parseInt(digit), 0);
-    
-    // Check if sum equals 75 (full) or 60 (demo)
-    if (sum !== 75 && sum !== 60) {
       setError('Code d\'activation invalide.');
       return;
     }
@@ -71,17 +60,6 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
     if (e.key === 'Enter') {
       validateAndActivate();
     }
-  };
-
-  const generateDemoCode = () => {
-    // Generate a demo code with sum = 60
-    const digits = [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0]; // Sum = 60
-    // Shuffle the digits for randomness
-    for (let i = digits.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [digits[i], digits[j]] = [digits[j], digits[i]];
-    }
-    return digits.join('');
   };
 
   if (!isOpen) return null;
@@ -122,11 +100,6 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
                       Expiration le {activationResult.expirationDate ? new Date(activationResult.expirationDate).toLocaleDateString('fr-FR') : ''}
                     </p>
                   </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
-                    <p className="text-blue-800 text-sm">
-                      💡 <strong>Astuce :</strong> Pour obtenir un code d'activation complet, contactez le support technique.
-                    </p>
-                  </div>
                 </div>
               ) : (
                 <p className="text-gray-600">Merci d'avoir activé Facturation Pro. Votre licence est maintenant active de façon permanente.</p>
@@ -135,27 +108,13 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
           ) : (
             <>
               <p className="text-gray-600 mb-6">
-                Veuillez entrer votre code d'activation pour continuer à utiliser Facturation Pro.
+                Veuillez entrer votre code d'activation pour utiliser Facturation Pro.
               </p>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <h4 className="font-medium text-blue-900 mb-2">Types de codes d'activation</h4>
-                <div className="text-sm text-blue-700 space-y-1">
-                  <div className="flex items-center">
-                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                    <span><strong>Code complet :</strong> 15 chiffres dont la somme = 75 (licence permanente)</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                    <span><strong>Code de démonstration :</strong> 15 chiffres dont la somme = 60 (essai gratuit de 7 jours)</span>
-                  </div>
-                </div>
-              </div>
               
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Code d'activation (15 chiffres)
+                    Code d'activation
                   </label>
                   <input
                     type="text"
@@ -168,7 +127,7 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
                     }}
                     onKeyDown={handleKeyDown}
                     className={`w-full px-4 py-2 border ${error ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'} rounded-md focus:outline-none focus:ring-2 focus:border-transparent`}
-                    placeholder=""
+                    placeholder="Entrez votre code d'activation"
                     maxLength={15}
                     disabled={isSubmitting}
                   />
@@ -177,33 +136,10 @@ const ActivationDialog: React.FC<ActivationDialogProps> = ({ isOpen, onClose }) 
                   )}
                 </div>
                 
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={() => setShowDemoInfo(!showDemoInfo)}
-                    className="text-sm text-blue-600 hover:text-blue-800 underline"
-                  >
-                    {showDemoInfo ? 'Masquer' : 'Générer un code de démonstration'}
-                  </button>
-                </div>
-                
-                {showDemoInfo && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800 mb-2">
-                      <strong>Code de démonstration exemple :</strong>
-                    </p>
-                    <code className="bg-white px-2 py-1 rounded border text-yellow-900 font-mono">
-                      {generateDemoCode()}
-                    </code>
-                    <p className="text-xs text-yellow-700 mt-2">
-                      Ce code vous donnera accès à toutes les fonctionnalités pendant 7 jours.
-                    </p>
-                  </div>
-                )}
-                
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-blue-700">
-                    <strong>Note:</strong> Le code d'activation complet vous est fourni lors de l'achat du logiciel. 
-                    Pour tester l'application, vous pouvez utiliser un code de démonstration qui vous donne accès à toutes les fonctionnalités pendant 7 jours.
+                    <strong>Note:</strong> Le code d'activation vous est fourni lors de l'achat du logiciel. 
+                    Contactez le support technique pour obtenir votre code d'activation.
                   </p>
                 </div>
               </div>
