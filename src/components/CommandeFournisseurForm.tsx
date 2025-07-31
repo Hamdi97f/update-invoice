@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart 
 import { Fournisseur, Produit, LigneDocument, CommandeFournisseur, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateTaxes } from '../utils/taxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import FournisseurForm from './FournisseurForm';
@@ -110,13 +110,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    if (lignes.length > 0 && taxes.length > 0) {
-      const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'commandesFournisseur');
-      setTaxCalculations(newTaxCalculations);
-    } else {
-      setTaxCalculations([]);
-    }
+    recalculateInvoiceTaxes();
   }, [lignes, taxes]);
 
   const loadFournisseurs = async () => {
@@ -195,6 +189,37 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         numero: `CF-${year}-${String(count).padStart(3, '0')}`
       }));
     }
+  };
+
+  const recalculateInvoiceTaxes = () => {
+    if (lignes.length === 0) {
+      setTaxCalculations([]);
+      return;
+    }
+
+    // Recalculate taxes for each line based on product's tax rate
+    const updatedLignes = lignes.map(ligne => {
+      const productTaxResult = calculateProductTaxes(
+        ligne.montantHT,
+        ligne.produit.tva,
+        taxes,
+        'commandesFournisseur'
+      );
+
+      return {
+        ...ligne,
+        taxes: productTaxResult.taxes,
+        taxBreakdown: productTaxResult.taxBreakdown,
+        montantTTC: productTaxResult.totalTTC
+      };
+    });
+
+    setLignes(updatedLignes);
+
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+    setTaxCalculations(formattedTaxes);
   };
 
   // Filter fournisseurs based on search term

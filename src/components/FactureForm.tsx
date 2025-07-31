@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart,
 import { Client, Produit, LigneDocument, Facture, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateTaxes } from '../utils/taxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -153,13 +153,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    if (lignes.length > 0 && taxes.length > 0) {
-      const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
-      setTaxCalculations(newTaxCalculations);
-    } else {
-      setTaxCalculations([]);
-    }
+    recalculateInvoiceTaxes();
   }, [lignes, taxes]);
 
   const loadClients = async () => {
@@ -282,6 +276,37 @@ const FactureForm: React.FC<FactureFormProps> = ({
     }
   };
 
+  const recalculateInvoiceTaxes = () => {
+    if (lignes.length === 0) {
+      setTaxCalculations([]);
+      return;
+    }
+
+    // Recalculate taxes for each line based on product's tax rate
+    const updatedLignes = lignes.map(ligne => {
+      const productTaxResult = calculateProductTaxes(
+        ligne.montantHT,
+        ligne.produit.tva,
+        taxes,
+        'factures'
+      );
+
+      return {
+        ...ligne,
+        taxes: productTaxResult.taxes,
+        taxBreakdown: productTaxResult.taxBreakdown,
+        montantTTC: productTaxResult.totalTTC
+      };
+    });
+
+    setLignes(updatedLignes);
+
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+    setTaxCalculations(formattedTaxes);
+  };
+
   // Filter clients based on search term
   const filteredClients = clients.filter(client =>
     client.nom.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
@@ -362,12 +387,30 @@ const FactureForm: React.FC<FactureFormProps> = ({
       (ligne as any)[field] = value;
     }
 
-    // Recalculate amounts
+    // Recalculate amounts HT
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
-    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+    
+    // Calculate taxes for this specific product
+    const productTaxResult = calculateProductTaxes(
+      montantHT,
+      ligne.produit.tva,
+      taxes,
+      'factures'
+    );
+    
+    ligne.taxes = productTaxResult.taxes;
+    ligne.taxBreakdown = productTaxResult.taxBreakdown;
+    ligne.montantTTC = productTaxResult.totalTTC;
 
     setLignes(newLignes);
+    
+    // Recalculate invoice-level taxes
+    setTimeout(() => {
+      const { aggregatedTaxes } = aggregateInvoiceTaxes(newLignes);
+      const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+      setTaxCalculations(formattedTaxes);
+    }, 0);
   };
 
   const handleRemoveLigne = (index: number) => {
@@ -377,10 +420,11 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Calculate taxes from settings, not from product TVA
-    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Calculate total TTC as sum of HT + taxes
+    // Calculate total TTC as sum of all product TTC
+    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };
@@ -404,13 +448,28 @@ const FactureForm: React.FC<FactureFormProps> = ({
       client: selectedClient,
       lignes,
       totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
+      totalTVA: 0, // Legacy field, kept for compatibility
       taxes: taxCalculations,
       totalTaxes,
       totalTTC,
       statut: formData.statut,
-      notes: formData.notes
+      montantTTC: produit.prixUnitaire,
+      taxes: [],
+      taxBreakdown: {}
     };
+    
+    // Calculate taxes for this new product
+    const productTaxResult = calculateProductTaxes(
+      newLigne.montantHT,
+      produit.tva,
+      taxes,
+      'factures'
+    );
+    
+    newLigne.taxes = productTaxResult.taxes;
+    newLigne.taxBreakdown = productTaxResult.taxBreakdown;
+    newLigne.montantTTC = productTaxResult.totalTTC;
+    
 
     if (isElectron) {
       try {
@@ -913,7 +972,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes:</span>
+                            <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
                           {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">

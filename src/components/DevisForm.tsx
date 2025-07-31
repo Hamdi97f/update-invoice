@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart,
 import { Client, Produit, LigneDocument, Devis, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateTaxes } from '../utils/taxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -110,13 +110,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    if (lignes.length > 0 && taxes.length > 0) {
-      const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'devis');
-      setTaxCalculations(newTaxCalculations);
-    } else {
-      setTaxCalculations([]);
-    }
+    recalculateInvoiceTaxes();
   }, [lignes, taxes]);
 
   const loadClients = async () => {
@@ -196,6 +190,37 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     }
   };
 
+  const recalculateInvoiceTaxes = () => {
+    if (lignes.length === 0) {
+      setTaxCalculations([]);
+      return;
+    }
+
+    // Recalculate taxes for each line based on product's tax rate
+    const updatedLignes = lignes.map(ligne => {
+      const productTaxResult = calculateProductTaxes(
+        ligne.montantHT,
+        ligne.produit.tva,
+        taxes,
+        'devis'
+      );
+
+      return {
+        ...ligne,
+        taxes: productTaxResult.taxes,
+        taxBreakdown: productTaxResult.taxBreakdown,
+        montantTTC: productTaxResult.totalTTC
+      };
+    });
+
+    setLignes(updatedLignes);
+
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+    setTaxCalculations(formattedTaxes);
+  };
+
   // Filter clients based on search term
   const filteredClients = clients.filter(client =>
     client.nom.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
@@ -233,20 +258,43 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       newLignes[existingLineIndex].quantite += 1;
       
       const ligne = newLignes[existingLineIndex];
-      const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
+      const montantHT = ligne.quantite * ligne.prixUnitaire;
       ligne.montantHT = montantHT;
-      ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+      
+      // Recalculate taxes for this product
+      const productTaxResult = calculateProductTaxes(
+        montantHT,
+        ligne.produit.tva,
+        taxes,
+        'devis'
+      );
+      
+      ligne.taxes = productTaxResult.taxes;
+      ligne.taxBreakdown = productTaxResult.taxBreakdown;
+      ligne.montantTTC = productTaxResult.totalTTC;
       
       setLignes(newLignes);
     } else {
+      const montantHT = produit.prixUnitaire;
+      
+      // Calculate taxes for this new product
+      const productTaxResult = calculateProductTaxes(
+        montantHT,
+        produit.tva,
+        taxes,
+        'devis'
+      );
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: produit.prixUnitaire,
-        montantTTC: calculateTTC(produit.prixUnitaire, produit.tva)
+        montantHT,
+        montantTTC: productTaxResult.totalTTC,
+        taxes: productTaxResult.taxes,
+        taxBreakdown: productTaxResult.taxBreakdown
       };
       setLignes([...lignes, newLigne]);
     }
@@ -271,9 +319,27 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
 
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
-    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+    
+    // Recalculate taxes for this specific product
+    const productTaxResult = calculateProductTaxes(
+      montantHT,
+      ligne.produit.tva,
+      taxes,
+      'devis'
+    );
+    
+    ligne.taxes = productTaxResult.taxes;
+    ligne.taxBreakdown = productTaxResult.taxBreakdown;
+    ligne.montantTTC = productTaxResult.totalTTC;
 
     setLignes(newLignes);
+    
+    // Recalculate invoice-level taxes
+    setTimeout(() => {
+      const { aggregatedTaxes } = aggregateInvoiceTaxes(newLignes);
+      const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+      setTaxCalculations(formattedTaxes);
+    }, 0);
   };
 
   const handleRemoveLigne = (index: number) => {
@@ -283,10 +349,11 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Calculate taxes from settings, not from product TVA
-    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'devis');
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Calculate total TTC as sum of HT + taxes
+    // Calculate total TTC as sum of all product TTC
+    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };

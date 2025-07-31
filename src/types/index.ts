@@ -45,6 +45,15 @@ export interface Tax {
   actif: boolean;
 }
 
+export interface ProductTax {
+  id: string;
+  nom: string;
+  type: 'percentage' | 'fixed';
+  valeur: number;
+  calculationBase: 'totalHT' | 'totalHTWithPreviousTaxes';
+  ordre: number;
+}
+
 export interface LigneDocument {
   id: string;
   produit: Produit;
@@ -53,12 +62,15 @@ export interface LigneDocument {
   remise: number;
   montantHT: number;
   montantTTC: number;
+  taxes?: ProductTax[];
+  taxBreakdown?: { [key: string]: number }; // Tax name -> amount
 }
 
 export interface TaxCalculation {
-  taxId: string;
+  taxId?: string;
   nom: string;
-  base: number;
+  rate?: number; // For aggregated taxes by rate
+  base?: number;
   montant: number;
 }
 
