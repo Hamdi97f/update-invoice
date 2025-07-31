@@ -269,7 +269,25 @@ function updateDatabaseSchema() {
         calculationBase TEXT NOT NULL,
         applicableDocuments TEXT NOT NULL,
         ordre INTEGER NOT NULL,
+        actif BOOLEAN DEFAULT 1,
+        isStandard BOOLEAN DEFAULT 0
+      );
+      
+      CREATE TABLE IF NOT EXISTS tax_groups (
+        id TEXT PRIMARY KEY,
+        nom TEXT NOT NULL,
+        description TEXT DEFAULT '',
         actif BOOLEAN DEFAULT 1
+      );
+      
+      CREATE TABLE IF NOT EXISTS tax_group_taxes (
+        id TEXT PRIMARY KEY,
+        taxGroupId TEXT NOT NULL,
+        taxId TEXT NOT NULL,
+        ordreInGroup INTEGER NOT NULL,
+        calculationBaseInGroup TEXT,
+        FOREIGN KEY (taxGroupId) REFERENCES tax_groups (id),
+        FOREIGN KEY (taxId) REFERENCES taxes (id)
       );
       
       CREATE TABLE IF NOT EXISTS stock_movements (
@@ -354,6 +372,23 @@ function addMissingColumns() {
     if (!hasTypeColumn) {
       log.info("Adding 'type' column to produits table");
       db.exec("ALTER TABLE produits ADD COLUMN type TEXT DEFAULT 'vente'");
+    }
+
+    // Check taxes table for isStandard column
+    const taxesTableInfo = db.prepare("PRAGMA table_info(taxes)").all();
+    const hasIsStandardColumn = taxesTableInfo.some(col => col.name === 'isStandard');
+    
+    if (!hasIsStandardColumn) {
+      log.info("Adding 'isStandard' column to taxes table");
+      db.exec("ALTER TABLE taxes ADD COLUMN isStandard BOOLEAN DEFAULT 0");
+    }
+
+    // Check produits table for taxGroupId column
+    const hasTaxGroupIdColumn = produitsTableInfo.some(col => col.name === 'taxGroupId');
+    
+    if (!hasTaxGroupIdColumn) {
+      log.info("Adding 'taxGroupId' column to produits table");
+      db.exec("ALTER TABLE produits ADD COLUMN taxGroupId TEXT");
     }
 
     // Check bons_livraison table for total columns
