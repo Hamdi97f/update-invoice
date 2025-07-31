@@ -1016,12 +1016,12 @@ export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
 
 export const generateCommandeFournisseurPDF = async (commande: CommandeFournisseur) => {
   try {
-    const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-    const query = isElectron ? window.electronAPI.dbQuery : undefined;
-    
     // Load lines if not already loaded
     if (!Array.isArray(commande.lignes) || commande.lignes.length === 0) {
       try {
+        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
+        const query = isElectron ? window.electronAPI.dbQuery : undefined;
+        
         if (query) {
           const lignesResult = await query(`
             SELECT lcf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
@@ -1054,21 +1054,12 @@ export const generateCommandeFournisseurPDF = async (commande: CommandeFournisse
       }
     }
     
-    // Load auto TVA settings and calculate auto TVA
-    let autoTvaLines: any[] = [];
-    try {
-      const autoTvaSettings = await getAutoTvaSettings(isElectron, query);
-      if (autoTvaSettings.enabled && commande.lignes.length > 0) {
-        const { tvaLines } = calculateAutoTva(commande.lignes, autoTvaSettings, commande.taxes || []);
-        autoTvaLines = tvaLines;
-      }
-    } catch (error) {
-      console.error('Error calculating auto TVA for PDF:', error);
-    }
-    
     // Load taxes if not already loaded
     if (!Array.isArray(commande.taxes) || commande.taxes.length === 0) {
       try {
+        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
+        const query = isElectron ? window.electronAPI.dbQuery : undefined;
+        
         if (query) {
           // Get active taxes applicable to commandesFournisseur
           const taxesResult = await query(`
@@ -1126,8 +1117,7 @@ export const generateCommandeFournisseurPDF = async (commande: CommandeFournisse
     
     const documentData = {
       ...commande,
-      type: 'commande',
-      autoTvaLines
+      type: 'commande'
     };
     
     return await generateEnhancedDocument(documentData, 'COMMANDE FOURNISSEUR');

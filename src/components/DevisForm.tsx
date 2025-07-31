@@ -4,7 +4,6 @@ import { Client, Produit, LigneDocument, Devis, Tax, TaxCalculation } from '../t
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
 import { calculateTaxes } from '../utils/taxCalculator';
-import { calculateAutoTva, getAutoTvaSettings, AutoTvaSettings } from '../utils/autoTvaCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -33,11 +32,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
-  const [autoTvaSettings, setAutoTvaSettings] = useState<AutoTvaSettings>({
-    enabled: false,
-    calculationBase: 'totalHT'
-  });
-  const [autoTvaLines, setAutoTvaLines] = useState<TaxCalculation[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -61,7 +55,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       loadClients();
       loadProduits();
       loadTaxes();
-      loadAutoTvaSettings();
       
       if (devis) {
         setFormData({
@@ -121,15 +114,10 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
       const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'devis');
       setTaxCalculations(newTaxCalculations);
-      
-      // Calculate auto TVA
-      const { tvaLines } = calculateAutoTva(lignes, autoTvaSettings, newTaxCalculations);
-      setAutoTvaLines(tvaLines);
     } else {
       setTaxCalculations([]);
-      setAutoTvaLines([]);
     }
-  }, [lignes, taxes, autoTvaSettings]);
+  }, [lignes, taxes]);
 
   const loadClients = async () => {
     if (!isReady) return;
@@ -188,15 +176,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       setTaxes(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
-    }
-  };
-
-  const loadAutoTvaSettings = async () => {
-    try {
-      const settings = await getAutoTvaSettings(isElectron, query);
-      setAutoTvaSettings(settings);
-    } catch (error) {
-      console.error('Error loading auto TVA settings:', error);
     }
   };
 
@@ -307,13 +286,10 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     // Calculate taxes from settings, not from product TVA
     const { totalTaxes } = calculateTaxes(totalHT, taxes, 'devis');
     
-    // Calculate auto TVA
-    const { totalAutoTva } = calculateAutoTva(lignes, autoTvaSettings, taxCalculations);
-    
     // Calculate total TTC as sum of HT + taxes
-    const totalTTC = totalHT + totalTaxes + totalAutoTva;
+    const totalTTC = totalHT + totalTaxes;
     
-    return { totalHT, totalTaxes, totalAutoTva, totalTTC };
+    return { totalHT, totalTaxes, totalTTC };
   };
 
   const handleSave = async () => {
@@ -424,7 +400,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   };
 
   const { totalHT, totalTaxes, totalTTC } = calculateTotals();
-  const { totalAutoTva } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -817,28 +792,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
                           <span>{formatCurrency(totalTaxes)}</span>
-                        </div>
-                      </>
-                    )}
-                    
-                    {/* Auto TVA lines */}
-                    {autoTvaLines.length > 0 && (
-                      <>
-                        <div className="border-t pt-2">
-                          <div className="flex items-center mb-2">
-                            <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">TVA automatique:</span>
-                          </div>
-                          {autoTvaLines.map((tvaLine, index) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{tvaLine.nom}:</span>
-                              <span>{formatCurrency(tvaLine.montant)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex justify-between text-sm font-medium">
-                          <span>Total TVA auto:</span>
-                          <span>{formatCurrency(totalAutoTva)}</span>
                         </div>
                       </>
                     )}
