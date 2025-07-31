@@ -386,8 +386,6 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
 
 // Enhanced totals section
 const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: any, startY: number) => {
-  // Don't skip totals section for bon de livraison anymore
-  
   const pageWidth = doc.internal.pageSize.getWidth();
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
@@ -425,7 +423,14 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
-  // Only show taxes from settings, not default TVA
+  // TVA from products (if any)
+  if (documentData.totalTVA && documentData.totalTVA > 0) {
+    doc.text(`TVA sur produits:`, rightX - 50, currentY);
+    doc.text(formatCurrency(documentData.totalTVA), rightX, currentY, { align: 'right' });
+    currentY += settings.spacing.line;
+  }
+  
+  // Additional taxes from settings (standard taxes)
   if (documentData.taxes && documentData.taxes.length > 0) {
     documentData.taxes.forEach((tax: any) => {
       doc.text(`${tax.nom}:`, rightX - 50, currentY);

@@ -377,13 +377,16 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Calculate taxes from settings, not from product TVA
-    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
+    // Calculate TVA from products (sum of individual line TVA)
+    const totalTVA = lignes.reduce((sum, ligne) => sum + (ligne.montantTTC - ligne.montantHT), 0);
     
-    // Calculate total TTC as sum of HT + taxes
-    const totalTTC = totalHT + totalTaxes;
+    // Calculate additional taxes from settings (only standard taxes)
+    const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
     
-    return { totalHT, totalTaxes, totalTTC };
+    // Calculate total TTC as sum of HT + product TVA + additional taxes
+    const totalTTC = totalHT + totalTVA + totalTaxes;
+    
+    return { totalHT, totalTVA, totalTaxes, totalTTC };
   };
 
   const handleSave = async () => {
@@ -394,7 +397,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       return;
     }
 
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    const { totalHT, totalTVA, totalTaxes, totalTTC } = calculateTotals();
 
     const factureData: Facture = {
       id: facture?.id || uuidv4(),
@@ -404,7 +407,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       client: selectedClient,
       lignes,
       totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
+      totalTVA, // Now contains the sum of product TVA
       taxes: taxCalculations,
       totalTaxes,
       totalTTC,
@@ -508,7 +511,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTVA, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -740,7 +743,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
                                       {produit.nom}
                                     </div>
                                     <div className="text-sm text-gray-600">
-                                      {formatCurrency(produit.prixUnitaire)} • TVA {produit.tva}%
+                                      {formatCurrency(produit.prixUnitaire)}
                                     </div>
                                   </div>
                                 </div>
@@ -861,7 +864,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
-                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
+                            {formatCurrency(ligne.montantTTC - ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
                             {formatCurrency(ligne.montantTTC)}
@@ -907,13 +910,21 @@ const FactureForm: React.FC<FactureFormProps> = ({
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
+                    {/* TVA from products */}
+                    {totalTVA > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">TVA sur produits:</span>
+                        <span>{formatCurrency(totalTVA)}</span>
+                      </div>
+                    )}
+                    
                     {/* Tax calculations */}
                     {taxCalculations.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
                           {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
@@ -922,10 +933,12 @@ const FactureForm: React.FC<FactureFormProps> = ({
                             </div>
                           ))}
                         </div>
-                        <div className="flex justify-between text-sm font-medium">
-                          <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
-                        </div>
+                        {totalTaxes > 0 && (
+                          <div className="flex justify-between text-sm font-medium">
+                            <span>Total taxes additionnelles:</span>
+                            <span>{formatCurrency(totalTaxes)}</span>
+                          </div>
+                        )}
                       </>
                     )}
                     

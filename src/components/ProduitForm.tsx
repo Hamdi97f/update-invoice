@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Store, ShoppingCart } from 'lucide-react';
-import { Produit } from '../types';
+import { Produit, TaxGroup } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -18,17 +18,19 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
     nom: '',
     description: '',
     prixUnitaire: 0,
-    tva: 19,
+    taxGroupId: '',
     stock: 0,
     type: defaultType as 'vente' | 'achat'
   });
 
+  const [taxGroups, setTaxGroups] = useState<TaxGroup[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { query, isReady } = useDatabase();
 
   useEffect(() => {
     if (isOpen && isReady) {
+      loadTaxGroups();
       setError(null);
       if (produit) {
         setFormData({
@@ -36,7 +38,7 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
           nom: produit.nom,
           description: produit.description || '',
           prixUnitaire: produit.prixUnitaire,
-          tva: produit.tva,
+          taxGroupId: (produit as any).taxGroupId || '',
           stock: produit.stock || 0,
           type: produit.type || 'vente' // Default to 'vente' for backward compatibility
         });
@@ -48,13 +50,51 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
           nom: '',
           description: '',
           prixUnitaire: 0,
-          tva: 19,
+          taxGroupId: '',
           stock: 0,
           type: defaultType
         });
       }
     }
   }, [produit, isOpen, defaultType, isReady]);
+
+  const loadTaxGroups = async () => {
+    if (!isReady) return;
+    
+    try {
+      const result = await query('SELECT * FROM tax_groups WHERE actif = 1 ORDER BY nom ASC');
+      const groupsWithTaxes = await Promise.all(result.map(async (group: any) => {
+        const groupTaxes = await query(`
+          SELECT tgt.*, t.nom, t.type, t.valeur, t.calculationBase, t.actif
+          FROM tax_group_taxes tgt
+          JOIN taxes t ON tgt.taxId = t.id
+          WHERE tgt.taxGroupId = ?
+          ORDER BY tgt.ordreInGroup ASC
+        `, [group.id]);
+        
+        return {
+          ...group,
+          taxes: groupTaxes.map((gt: any) => ({
+            taxId: gt.taxId,
+            tax: {
+              id: gt.taxId,
+              nom: gt.nom,
+              type: gt.type,
+              valeur: gt.valeur,
+              calculationBase: gt.calculationBase,
+              actif: gt.actif
+            },
+            ordreInGroup: gt.ordreInGroup,
+            calculationBaseInGroup: gt.calculationBaseInGroup
+          }))
+        };
+      }));
+      
+      setTaxGroups(groupsWithTaxes);
+    } catch (error) {
+      console.error('Error loading tax groups:', error);
+    }
+  };
 
   const generateProductRef = async (type: 'vente' | 'achat') => {
     if (!isReady) return;
@@ -109,24 +149,26 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
         nom: formData.nom.trim(),
         description: formData.description.trim(),
         prixUnitaire: formData.prixUnitaire,
-        tva: formData.tva,
+        tva: 0, // Keep for backward compatibility
         stock: formData.stock,
-        type: formData.type
+        type: formData.type,
+        taxGroupId: formData.taxGroupId || undefined
       };
 
       await query(
         `INSERT OR REPLACE INTO produits 
-         (id, ref, nom, description, prixUnitaire, tva, stock, type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, ref, nom, description, prixUnitaire, tva, stock, type, taxGroupId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           produitData.id,
           produitData.ref || null,
           produitData.nom,
           produitData.description,
           produitData.prixUnitaire,
-          produitData.tva,
+          0, // Keep tva as 0 for backward compatibility
           produitData.stock,
-          produitData.type
+          produitData.type,
+          formData.taxGroupId || null
         ]
       );
 
@@ -150,6 +192,15 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
   const handleTypeChange = (type: 'vente' | 'achat') => {
     setFormData(prev => ({ ...prev, type }));
     generateProductRef(type);
+  };
+
+  const getSelectedTaxGroupDisplay = () => {
+    if (!formData.taxGroupId) return 'Aucun groupe de taxes sélectionné';
+    
+    const selectedGroup = taxGroups.find(g => g.id === formData.taxGroupId);
+    if (!selectedGroup) return 'Groupe non trouvé';
+    
+    return selectedGroup.taxes.map(gt => `${gt.tax.nom} (${gt.tax.valeur}${gt.tax.type === 'percentage' ? '%' : ' TND'})`).join(' + ');
   };
 
   if (!isOpen) return null;
@@ -305,11 +356,11 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                TVA (%)
+                Groupe de taxes
               </label>
               <select
-                value={formData.tva}
-                onChange={(e) => handleChange('tva', parseFloat(e.target.value))}
+                value={formData.taxGroupId}
+                onChange={(e) => handleChange('taxGroupId', e.target.value)}
                 className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:border-transparent ${
                   formData.type === 'vente' 
                     ? 'border-green-300 focus:ring-green-500' 
@@ -317,11 +368,18 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
                 }`}
                 disabled={isSubmitting}
               >
-                <option value={0}>0%</option>
-                <option value={7}>7%</option>
-                <option value={13}>13%</option>
-                <option value={19}>19%</option>
+                <option value="">Aucun groupe de taxes</option>
+                {taxGroups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.nom} ({group.taxes.length} taxe{group.taxes.length > 1 ? 's' : ''})
+                  </option>
+                ))}
               </select>
+              {formData.taxGroupId && (
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                  <strong>Taxes appliquées:</strong> {getSelectedTaxGroupDisplay()}
+                </div>
+              )}
             </div>
 
             <div className="md:col-span-2">

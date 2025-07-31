@@ -43,6 +43,22 @@ export interface Tax {
   applicableDocuments: ('factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur')[];
   ordre: number;
   actif: boolean;
+  isStandard?: boolean; // Taxe automatiquement appliquée
+}
+
+export interface TaxGroup {
+  id: string;
+  nom: string;
+  description: string;
+  taxes: TaxGroupTax[];
+  actif: boolean;
+}
+
+export interface TaxGroupTax {
+  taxId: string;
+  tax: Tax;
+  ordreInGroup: number;
+  calculationBaseInGroup?: 'totalHT' | 'totalHTWithPreviousTaxes';
 }
 
 export interface LigneDocument {
