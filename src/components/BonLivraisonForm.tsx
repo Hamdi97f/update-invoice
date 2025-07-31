@@ -678,12 +678,11 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Prix unit.
                         </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Total HT
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          TVA
-                        </th>
+                        {lignes.some(ligne => ligne.remise > 0) && (
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                            Remise
+                          </th>
+                        )}
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Total TTC
                         </th>
@@ -721,11 +720,13 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                           <td className="px-4 py-3 text-sm">
                             {formatCurrency(ligne.produit.prixUnitaire)}
                           </td>
+                          {lignes.some(ligne => ligne.remise > 0) && (
+                            <td className="px-4 py-3 text-sm">
+                              0%
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-sm">
                             {formatCurrency(ligne.produit.prixUnitaire * ligne.quantite)}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {ligne.produit.tva}%
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-orange-600">
                             {formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))}
@@ -755,14 +756,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
             {/* Totals */}
             {lignes.length > 0 && (
-              <div className="mt-6 flex justify-end">
-                <div className="bg-orange-50 p-4 rounded-lg w-96">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Total HT:</span>
-                      <span>{formatCurrency(totalHT)}</span>
-                    </div>
-                    
                     {/* Tax calculations */}
                     {taxCalculations.length > 0 && (
                       <>

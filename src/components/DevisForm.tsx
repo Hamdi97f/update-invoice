@@ -673,15 +673,11 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Prix unit.
                         </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Remise %
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Total HT
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          TVA
-                        </th>
+                        {lignes.some(ligne => ligne.remise > 0) && (
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                            Remise %
+                          </th>
+                        )}
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Total TTC
                         </th>
@@ -722,23 +718,19 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                               step="0.001"
                             />
                           </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              value={ligne.remise}
-                              onChange={(e) => handleLigneChange(index, 'remise', parseFloat(e.target.value) || 0)}
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-green-500"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                            />
-                          </td>
-                          <td className="px-4 py-3 text-sm font-medium">
-                            {formatCurrency(ligne.montantHT)}
-                          </td>
-                          <td className="px-4 py-3 text-sm font-medium">
-                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
-                          </td>
+                          {lignes.some(ligne => ligne.remise > 0) && (
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                value={ligne.remise}
+                                onChange={(e) => handleLigneChange(index, 'remise', parseFloat(e.target.value) || 0)}
+                                className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-green-500"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                              />
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-sm font-medium text-green-600">
                             {formatCurrency(ligne.montantTTC)}
                           </td>
@@ -766,14 +758,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
             </div>
 
             {/* Totals */}
-            {lignes.length > 0 && (
-              <div className="mt-6 flex justify-end">
-                <div className="bg-green-50 p-4 rounded-lg w-96">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Total HT:</span>
-                      <span>{formatCurrency(totalHT)}</span>
-                    </div>
                     
                     {taxCalculations.length > 0 && (
                       <>
