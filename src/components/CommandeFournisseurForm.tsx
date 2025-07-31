@@ -696,6 +696,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                           Total HT
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          TVA
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Total TTC
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -749,6 +752,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                           <td className="px-4 py-3 text-sm font-medium">
                             {formatCurrency(ligne.montantHT)}
                           </td>
+                          <td className="px-4 py-3 text-sm font-medium">
+                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
+                          </td>
                           <td className="px-4 py-3 text-sm font-medium text-purple-600">
                             {formatCurrency(ligne.montantTTC)}
                           </td>
@@ -777,6 +783,14 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
             {/* Totals */}
             {lignes.length > 0 && (
+              <div className="mt-6 flex justify-end">
+                <div className="bg-purple-50 p-4 rounded-lg w-96">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>Total HT:</span>
+                      <span>{formatCurrency(totalHT)}</span>
+                    </div>
+                    
                     {/* Tax calculations */}
                     {taxCalculations.length > 0 && (
                       <>

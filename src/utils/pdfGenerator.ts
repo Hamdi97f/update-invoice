@@ -259,93 +259,49 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
     typeof ligne.quantite === 'number'
   ) : [];
   
-  // Check if any line has a discount to determine if we should show the remise column
-  const hasRemise = validLines.some((ligne: any) => ligne.remise && ligne.remise > 0);
-  
-  // Adjust headers based on whether remise is needed
-  const finalHeaders = hasRemise 
-    ? ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'Total TTC']
-    : ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Total HT', 'Total TTC'];
-  
   let tableData;
   
   if (documentData.type === 'bonLivraison') {
-    // For bon de livraison, adjust columns based on remise
-    tableData = validLines.map((ligne: any) => {
-      const baseData = [
-        ligne.produit.ref || '-',
-        ligne.produit.nom,
-        ligne.quantite.toString(),
-        formatCurrency(ligne.produit.prixUnitaire)
-      ];
-      
-      if (hasRemise) {
-        baseData.push('0%'); // Remise column
-      }
-      
-      baseData.push(
-        formatCurrency(ligne.produit.prixUnitaire * ligne.quantite), // Total HT
-        formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100)) // Total TTC
-      );
-      
-      return baseData;
-    });
+    // For bon de livraison, create a table with all columns but fill only some
+    tableData = validLines.map((ligne: any) => [
+      ligne.produit.ref || '-',
+      ligne.produit.nom,
+      ligne.quantite.toString(),
+      formatCurrency(ligne.produit.prixUnitaire),
+      '0%',
+      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
+      `${ligne.produit.tva}%`,
+      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
+    ]);
   } else {
-    // For other document types, adjust columns based on remise
-    tableData = validLines.map((ligne: any) => {
-      const baseData = [
-        ligne.produit.ref || '-',
-        ligne.produit.nom,
-        ligne.quantite.toString(),
-        formatCurrency(ligne.prixUnitaire)
-      ];
-      
-      if (hasRemise) {
-        baseData.push(`${ligne.remise || 0}%`); // Remise column
-      }
-      
-      baseData.push(
-        formatCurrency(ligne.montantHT), // Total HT
-        formatCurrency(ligne.montantTTC) // Total TTC
-      );
-      
-      return baseData;
-    });
+    // For other document types
+    tableData = validLines.map((ligne: any) => [
+      ligne.produit.ref || '-',
+      ligne.produit.nom,
+      ligne.quantite.toString(),
+      formatCurrency(ligne.prixUnitaire),
+      `${ligne.remise || 0}%`,
+      formatCurrency(ligne.montantHT),
+      `${ligne.produit.tva}%`,
+      formatCurrency(ligne.montantTTC)
+    ]);
   }
   
-  // Optimized column widths based on whether remise column is shown
-  let columnStyles: any = {};
-  
-  if (hasRemise) {
-    // With remise column (7 columns)
-    columnStyles = {
-      0: { cellWidth: availableWidth * 0.12, halign: 'left' },    // Réf: 12%
-      1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
-      2: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Qté: 10%
-      3: { cellWidth: availableWidth * 0.15, halign: 'right' },   // Prix U.: 15%
-      4: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Remise: 10%
-      5: { cellWidth: availableWidth * 0.18, halign: 'right' },   // Total HT: 18%
-      6: { cellWidth: availableWidth * 0.18, halign: 'right' }    // Total TTC: 18%
-    };
-  } else {
-    // Without remise column (6 columns)
-    columnStyles = {
-      0: { cellWidth: availableWidth * 0.12, halign: 'left' },    // Réf: 12%
-      1: { cellWidth: availableWidth * 0.40, halign: 'left' },    // Désignation: 40%
-      2: { cellWidth: availableWidth * 0.12, halign: 'center' },  // Qté: 12%
-      3: { cellWidth: availableWidth * 0.18, halign: 'right' },   // Prix U.: 18%
-      4: { cellWidth: availableWidth * 0.18, halign: 'right' },   // Total HT: 18%
-      5: { cellWidth: availableWidth * 0.18, halign: 'right' }    // Total TTC: 18%
-    };
-  }
+  // Optimized column widths for full table (8 columns) - using percentage of available width
+  const columnStyles = {
+    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
+    1: { cellWidth: availableWidth * 0.30, halign: 'left' },    // Désignation: 30%
+    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
+    3: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Prix U.: 13%
+    4: { cellWidth: availableWidth * 0.09, halign: 'center' },  // Remise: 9%
+    5: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Total HT: 13%
+    6: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
+    7: { cellWidth: availableWidth * 0.13, halign: 'right' }    // Total TTC: 13%
+  };
   
   // Add a default empty row if no data
   if (!tableData || tableData.length === 0) {
-    if (hasRemise) {
-      tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0.000 TND']];
-    } else {
-      tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0.000 TND', '0.000 TND']];
-    }
+    tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0%', '0.000 TND']];
   }
   
   // Table theme based on settings
@@ -358,7 +314,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   autoTable(doc, {
     startY: startY,
-    head: [finalHeaders],
+    head: [tableHeaders],
     body: tableData,
     theme: tableTheme,
     
@@ -430,6 +386,8 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
 
 // Enhanced totals section
 const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: any, startY: number) => {
+  // Don't skip totals section for bon de livraison anymore
+  
   const pageWidth = doc.internal.pageSize.getWidth();
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
@@ -467,7 +425,7 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
-  // Additional taxes from settings (standard taxes)
+  // Only show taxes from settings, not default TVA
   if (documentData.taxes && documentData.taxes.length > 0) {
     documentData.taxes.forEach((tax: any) => {
       doc.text(`${tax.nom}:`, rightX - 50, currentY);
