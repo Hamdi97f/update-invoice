@@ -42,6 +42,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
   const [useEcheanceDate, setUseEcheanceDate] = useState(true);
+  const [taxGroups, setTaxGroups] = useState<TaxGroup[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -65,6 +66,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       loadClients();
       loadProduits();
       loadTaxes();
+      loadTaxGroups();
       loadInvoiceSettings();
       
       if (facture) {
@@ -222,6 +224,52 @@ const FactureForm: React.FC<FactureFormProps> = ({
     }
   };
 
+  const loadTaxGroups = async () => {
+    if (!isReady) return;
+    
+    if (!isElectron) {
+      const savedGroups = localStorage.getItem('taxGroups');
+      if (savedGroups) {
+        setTaxGroups(JSON.parse(savedGroups));
+      }
+      return;
+    }
+
+    try {
+      const result = await query('SELECT * FROM tax_groups WHERE actif = 1 ORDER BY nom ASC');
+      const groupsWithTaxes = await Promise.all(result.map(async (group: any) => {
+        const groupTaxes = await query(`
+          SELECT tgt.*, t.nom, t.type, t.valeur, t.calculationBase, t.actif
+          FROM tax_group_taxes tgt
+          JOIN taxes t ON tgt.taxId = t.id
+          WHERE tgt.taxGroupId = ?
+          ORDER BY tgt.ordreInGroup ASC
+        `, [group.id]);
+        
+        return {
+          ...group,
+          actif: Boolean(group.actif),
+          taxes: groupTaxes.map((gt: any) => ({
+            taxId: gt.taxId,
+            tax: {
+              id: gt.taxId,
+              nom: gt.nom,
+              type: gt.type,
+              valeur: gt.valeur,
+              calculationBase: gt.calculationBase,
+              actif: Boolean(gt.actif)
+            },
+            ordreInGroup: gt.ordreInGroup,
+            calculationBaseInGroup: gt.calculationBaseInGroup
+          }))
+        };
+      }));
+      
+      setTaxGroups(groupsWithTaxes);
+    } catch (error) {
+      console.error('Error loading tax groups:', error);
+    }
+  };
   const loadInvoiceSettings = async () => {
     if (!isReady) return;
     
@@ -322,23 +370,107 @@ const FactureForm: React.FC<FactureFormProps> = ({
       const newLignes = [...lignes];
       newLignes[existingLineIndex].quantite += 1;
       
-      // Recalculate amounts
+      // Recalculate amounts with tax groups
       const ligne = newLignes[existingLineIndex];
       const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
       ligne.montantHT = montantHT;
-      ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+      
+      // Calculate TTC based on tax group if available
+      const produitWithTaxGroup = ligne.produit as any;
+      if (produitWithTaxGroup.taxGroupId) {
+        const taxGroup = taxGroups.find(g => g.id === produitWithTaxGroup.taxGroupId);
+        if (taxGroup && taxGroup.actif) {
+          let lineTotalTaxes = 0;
+          let lineRunningTotal = montantHT;
+          
+          // Apply each tax in the group to this line
+          taxGroup.taxes.forEach(groupTax => {
+            if (!groupTax.tax.actif) return;
+            
+            let base: number;
+            let montant: number;
+            
+            if (groupTax.tax.type === 'fixed') {
+              base = 0;
+              montant = groupTax.tax.valeur;
+            } else {
+              const calculationBase = groupTax.calculationBaseInGroup || groupTax.tax.calculationBase;
+              
+              if (calculationBase === 'totalHT') {
+                base = montantHT;
+              } else {
+                base = lineRunningTotal;
+              }
+              montant = (base * groupTax.tax.valeur) / 100;
+            }
+            
+            lineRunningTotal += montant;
+            lineTotalTaxes += montant;
+          });
+          
+          ligne.montantTTC = montantHT + lineTotalTaxes;
+        } else {
+          ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+        }
+      } else {
+        ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+      }
       
       setLignes(newLignes);
     } else {
-      // Add new line
+      // Add new line with proper tax calculation
+      const montantHT = produit.prixUnitaire;
+      let montantTTC = montantHT;
+      
+      // Calculate TTC based on tax group if available
+      const produitWithTaxGroup = produit as any;
+      if (produitWithTaxGroup.taxGroupId) {
+        const taxGroup = taxGroups.find(g => g.id === produitWithTaxGroup.taxGroupId);
+        if (taxGroup && taxGroup.actif) {
+          let lineTotalTaxes = 0;
+          let lineRunningTotal = montantHT;
+          
+          // Apply each tax in the group to this line
+          taxGroup.taxes.forEach(groupTax => {
+            if (!groupTax.tax.actif) return;
+            
+            let base: number;
+            let montant: number;
+            
+            if (groupTax.tax.type === 'fixed') {
+              base = 0;
+              montant = groupTax.tax.valeur;
+            } else {
+              const calculationBase = groupTax.calculationBaseInGroup || groupTax.tax.calculationBase;
+              
+              if (calculationBase === 'totalHT') {
+                base = montantHT;
+              } else {
+                base = lineRunningTotal;
+              }
+              montant = (base * groupTax.tax.valeur) / 100;
+            }
+            
+            lineRunningTotal += montant;
+            lineTotalTaxes += montant;
+          });
+          
+          montantTTC = montantHT + lineTotalTaxes;
+        } else {
+          montantTTC = calculateTTC(montantHT, produit.tva);
+        }
+      } else {
+        montantTTC = calculateTTC(montantHT, produit.tva);
+      }
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: produit.prixUnitaire,
-        montantTTC: calculateTTC(produit.prixUnitaire, produit.tva)
+        montantHT: montantHT,
+        montantTTC: montantTTC
       };
       setLignes([...lignes, newLigne]);
     }
@@ -362,10 +494,52 @@ const FactureForm: React.FC<FactureFormProps> = ({
       (ligne as any)[field] = value;
     }
 
-    // Recalculate amounts
+    // Recalculate amounts with tax groups
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
-    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+    
+    // Calculate TTC based on tax group if available
+    const produit = ligne.produit as any;
+    if (produit.taxGroupId) {
+      const taxGroup = taxGroups.find(g => g.id === produit.taxGroupId);
+      if (taxGroup && taxGroup.actif) {
+        let lineTotalTaxes = 0;
+        let lineRunningTotal = montantHT;
+        
+        // Apply each tax in the group to this line
+        taxGroup.taxes.forEach(groupTax => {
+          if (!groupTax.tax.actif) return;
+          
+          let base: number;
+          let montant: number;
+          
+          if (groupTax.tax.type === 'fixed') {
+            base = 0;
+            montant = groupTax.tax.valeur;
+          } else {
+            const calculationBase = groupTax.calculationBaseInGroup || groupTax.tax.calculationBase;
+            
+            if (calculationBase === 'totalHT') {
+              base = montantHT;
+            } else {
+              base = lineRunningTotal;
+            }
+            montant = (base * groupTax.tax.valeur) / 100;
+          }
+          
+          lineRunningTotal += montant;
+          lineTotalTaxes += montant;
+        });
+        
+        ligne.montantTTC = montantHT + lineTotalTaxes;
+      } else {
+        // Fallback to old calculation
+        ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+      }
+    } else {
+      // Fallback to old calculation for products without tax groups
+      ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+    }
 
     setLignes(newLignes);
   };
@@ -377,16 +551,79 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Calculate TVA from products (sum of individual line TVA)
-    const totalTVA = lignes.reduce((sum, ligne) => sum + (ligne.montantTTC - ligne.montantHT), 0);
+    // Calculate TVA from products - this should be the sum of taxes from tax groups applied to products
+    let totalProductTVA = 0;
+    let productTaxDetails: TaxCalculation[] = [];
     
-    // Calculate additional taxes from settings (only standard taxes)
+    // For each line, if the product has a tax group, calculate the taxes for that line
+    lignes.forEach(ligne => {
+      const produit = ligne.produit as any;
+      if (produit.taxGroupId) {
+        // Find the tax group
+        const taxGroup = taxGroups.find(g => g.id === produit.taxGroupId);
+        if (taxGroup && taxGroup.actif) {
+          let lineRunningTotal = ligne.montantHT;
+          
+          // Apply each tax in the group to this line
+          taxGroup.taxes.forEach(groupTax => {
+            if (!groupTax.tax.actif) return;
+            
+            let base: number;
+            let montant: number;
+            
+            if (groupTax.tax.type === 'fixed') {
+              // For fixed taxes, apply per line (might not make sense, but keeping for consistency)
+              base = 0;
+              montant = groupTax.tax.valeur;
+            } else {
+              const calculationBase = groupTax.calculationBaseInGroup || groupTax.tax.calculationBase;
+              
+              if (calculationBase === 'totalHT') {
+                base = ligne.montantHT;
+              } else {
+                base = lineRunningTotal;
+              }
+              montant = (base * groupTax.tax.valeur) / 100;
+            }
+            
+            // Add to product tax details (aggregate by tax name)
+            const existingTaxIndex = productTaxDetails.findIndex(td => td.nom === groupTax.tax.nom);
+            if (existingTaxIndex >= 0) {
+              productTaxDetails[existingTaxIndex].montant += montant;
+              productTaxDetails[existingTaxIndex].base += base;
+            } else {
+              productTaxDetails.push({
+                taxId: groupTax.tax.id,
+                nom: groupTax.tax.nom,
+                base,
+                montant
+              });
+            }
+            
+            lineRunningTotal += montant;
+            totalProductTVA += montant;
+          });
+        }
+      } else {
+        // Fallback: use the old TVA calculation for products without tax groups
+        const oldTVA = ligne.montantTTC - ligne.montantHT;
+        totalProductTVA += oldTVA;
+      }
+    });
+    
+    // Calculate additional taxes from settings (only standard taxes that are auto-applied)
     const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
     
-    // Calculate total TTC as sum of HT + product TVA + additional taxes
-    const totalTTC = totalHT + totalTVA + totalTaxes;
+    // Calculate total TTC as sum of HT + product taxes + additional standard taxes
+    const totalTTC = totalHT + totalProductTVA + totalTaxes;
     
-    return { totalHT, totalTVA, totalTaxes, totalTTC };
+    return { 
+      totalHT, 
+      totalTVA: totalProductTVA, // This now contains taxes from product tax groups
+      totalTaxes, 
+      totalTTC,
+      productTaxDetails // Details of taxes applied via product tax groups
+    };
   };
 
   const handleSave = async () => {
@@ -397,7 +634,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       return;
     }
 
-    const { totalHT, totalTVA, totalTaxes, totalTTC } = calculateTotals();
+    const { totalHT, totalTVA, totalTaxes, totalTTC, productTaxDetails } = calculateTotals();
 
     const factureData: Facture = {
       id: facture?.id || uuidv4(),
@@ -407,7 +644,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       client: selectedClient,
       lignes,
       totalHT,
-      totalTVA, // Now contains the sum of product TVA
+      totalTVA, // Now contains the sum of taxes from product tax groups
       taxes: taxCalculations,
       totalTaxes,
       totalTTC,
@@ -864,7 +1101,23 @@ const FactureForm: React.FC<FactureFormProps> = ({
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
-                            {formatCurrency(ligne.montantTTC - ligne.montantHT)}
+                            {(() => {
+                              const produitWithTaxGroup = ligne.produit as any;
+                              if (produitWithTaxGroup.taxGroupId) {
+                                const taxGroup = taxGroups.find(g => g.id === produitWithTaxGroup.taxGroupId);
+                                if (taxGroup && taxGroup.actif) {
+                                  // Calculate and display the tax rate from the group
+                                  const totalTaxRate = taxGroup.taxes.reduce((sum, gt) => {
+                                    if (gt.tax.type === 'percentage') {
+                                      return sum + gt.tax.valeur;
+                                    }
+                                    return sum;
+                                  }, 0);
+                                  return `${totalTaxRate}%`;
+                                }
+                              }
+                              return `${ligne.produit.tva}%`;
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
                             {formatCurrency(ligne.montantTTC)}
@@ -910,10 +1163,10 @@ const FactureForm: React.FC<FactureFormProps> = ({
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* TVA from products */}
+                    {/* TVA from product tax groups */}
                     {totalTVA > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">TVA sur produits:</span>
+                        <span className="text-gray-600">Taxes sur produits:</span>
                         <span>{formatCurrency(totalTVA)}</span>
                       </div>
                     )}

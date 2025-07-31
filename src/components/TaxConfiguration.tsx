@@ -904,6 +904,21 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                     <span className="ml-2 text-sm text-gray-700">Taxe active</span>
                   </label>
                 </div>
+
+                <div>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.isStandard}
+                      onChange={(e) => setFormData(prev => ({ ...prev, isStandard: e.target.checked }))}
+                      className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Taxe standard (auto-appliquée)</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1 ml-6">
+                    Les taxes standards sont automatiquement ajoutées à tous les documents (ex: Timbre Fiscal)
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end space-x-4 mt-6">

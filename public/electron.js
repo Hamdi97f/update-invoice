@@ -456,7 +456,8 @@ function insertSampleData() {
       'totalHT',
       JSON.stringify(['factures', 'devis', 'bonsLivraison', 'commandesFournisseur']),
       1,
-      1
+      1,
+      0
     );
     
     insertTax.run(
@@ -467,7 +468,20 @@ function insertSampleData() {
       'totalHT',
       JSON.stringify(['factures']),
       2,
+      1,
       1
+    );
+    
+    insertTax.run(
+      uuidv4(),
+      'Fodec',
+      'percentage',
+      1,
+      'totalHT',
+      JSON.stringify(['factures', 'devis', 'bonsLivraison', 'commandesFournisseur']),
+      3,
+      1,
+      0
     );
     
     log.info('Sample data inserted successfully');
