@@ -423,8 +423,6 @@ const FactureForm: React.FC<FactureFormProps> = ({
     // Aggregate taxes from all product lines
     const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Calculate total TTC as sum of all product TTC
-    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };
