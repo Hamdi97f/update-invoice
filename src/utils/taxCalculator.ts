@@ -1,42 +1,10 @@
 import { Tax, TaxCalculation } from '../types';
 
-// Load auto TVA settings
-const getAutoTvaSettings = async (isElectron: boolean, query?: any) => {
-  const defaultSettings = {
-    enabled: false,
-    calculationBase: 'totalHT' as 'totalHT' | 'totalHTWithPreviousTaxes'
-  };
-
-  try {
-    if (isElectron && query) {
-      const result = await query('SELECT value FROM settings WHERE key = ?', ['autoTvaSettings']);
-      if (result.length > 0) {
-        return { ...defaultSettings, ...JSON.parse(result[0].value) };
-      }
-    } else {
-      const savedSettings = localStorage.getItem('autoTvaSettings');
-      if (savedSettings) {
-        return { ...defaultSettings, ...JSON.parse(savedSettings) };
-      }
-    }
-  } catch (error) {
-    console.error('Error loading auto TVA settings:', error);
-  }
-
-  return defaultSettings;
-};
-
-export const calculateTaxes = async (
+export const calculateTaxes = (
   totalHT: number,
   taxes: Tax[],
-  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur',
-  lignes?: any[] // Add lignes parameter to access product TVA rates
-): Promise<{ taxes: TaxCalculation[], totalTaxes: number }> => {
-  // Get auto TVA settings
-  const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-  const query = isElectron ? window.electronAPI.dbQuery : undefined;
-  const autoTvaSettings = await getAutoTvaSettings(isElectron, query);
-
+  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur'
+): { taxes: TaxCalculation[], totalTaxes: number } => {
   // Filter taxes applicable to this document type and active taxes
   const applicableTaxes = taxes
     .filter(tax => tax.actif && tax.applicableDocuments.includes(documentType))
@@ -46,62 +14,6 @@ export const calculateTaxes = async (
   let runningTotal = totalHT;
   let totalTaxes = 0;
 
-  // Step 1: Calculate product TVA rates (group by rate) if Auto TVA is enabled
-  const productTVAGroups = new Map<number, { base: number, rate: number }>();
-  
-  if (autoTvaSettings.enabled && lignes && lignes.length > 0) {
-    lignes.forEach(ligne => {
-      const tvaRate = ligne.produit?.tva || 0;
-      if (tvaRate > 0) {
-        const montantHT = ligne.montantHT || (ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100));
-        
-        if (productTVAGroups.has(tvaRate)) {
-          const existing = productTVAGroups.get(tvaRate)!;
-          existing.base += montantHT;
-        } else {
-          productTVAGroups.set(tvaRate, { base: montantHT, rate: tvaRate });
-        }
-      }
-    });
-  }
-
-  // Step 2: Check which TVA rates are covered by configured taxes
-  const configuredTVARates = new Set<number>();
-  applicableTaxes.forEach(tax => {
-    if (tax.type === 'percentage' && tax.nom.toLowerCase().includes('tva')) {
-      configuredTVARates.add(tax.valeur);
-    }
-  });
-
-  // Step 3: Add product TVA calculations for rates NOT covered by configured taxes (Auto TVA)
-  if (autoTvaSettings.enabled) {
-    productTVAGroups.forEach((group, rate) => {
-      if (!configuredTVARates.has(rate)) {
-        let base = group.base;
-        
-        // Apply calculation base setting for Auto TVA
-        if (autoTvaSettings.calculationBase === 'totalHTWithPreviousTaxes') {
-          // For Auto TVA with previous taxes, we still use the product HT base
-          // but we could adjust this logic if needed
-          base = group.base;
-        }
-        
-        const montant = (base * rate) / 100;
-        
-        taxCalculations.push({
-          taxId: `auto-tva-${rate}`,
-          nom: `TVA (${rate}%)`,
-          base,
-          montant
-        });
-        
-        runningTotal += montant;
-        totalTaxes += montant;
-      }
-    });
-  }
-
-  // Step 4: Apply configured taxes
   for (const tax of applicableTaxes) {
     let base: number;
     let montant: number;
@@ -113,38 +25,12 @@ export const calculateTaxes = async (
     } else {
       // Percentage tax
       if (tax.calculationBase === 'totalHT') {
-        // For TVA taxes, only apply to products with matching rate if Auto TVA is enabled
-        if (autoTvaSettings.enabled && tax.nom.toLowerCase().includes('tva')) {
-          const matchingGroup = productTVAGroups.get(tax.valeur);
-          if (matchingGroup) {
-            base = matchingGroup.base;
-            montant = (base * tax.valeur) / 100;
-          } else {
-            // No products with this TVA rate, skip this tax
-            continue;
-          }
-        } else {
-          // Non-TVA tax or Auto TVA disabled, apply to total HT
-          base = totalHT;
-          montant = (base * tax.valeur) / 100;
-        }
+        base = totalHT;
       } else {
         // totalHTWithPreviousTaxes
-        if (autoTvaSettings.enabled && tax.nom.toLowerCase().includes('tva')) {
-          const matchingGroup = productTVAGroups.get(tax.valeur);
-          if (matchingGroup) {
-            base = matchingGroup.base;
-            montant = (base * tax.valeur) / 100;
-          } else {
-            // No products with this TVA rate, skip this tax
-            continue;
-          }
-        } else {
-          // Non-TVA tax or Auto TVA disabled, apply to running total
-          base = runningTotal;
-          montant = (base * tax.valeur) / 100;
-        }
+        base = runningTotal;
       }
+      montant = (base * tax.valeur) / 100;
     }
 
     taxCalculations.push({

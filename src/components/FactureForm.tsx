@@ -155,9 +155,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
   useEffect(() => {
     if (lignes.length > 0 && taxes.length > 0) {
       const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      calculateTaxes(totalHT, taxes, 'factures', lignes).then(result => {
-        setTaxCalculations(result.taxes);
-      });
+      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
+      setTaxCalculations(newTaxCalculations);
     } else {
       setTaxCalculations([]);
     }
@@ -378,8 +377,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Calculate total taxes from tax calculations
-    const totalTaxes = taxCalculations.reduce((sum, calc) => sum + calc.montant, 0);
+    // Calculate taxes from settings, not from product TVA
+    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'factures');
     
     // Calculate total TTC as sum of HT + taxes
     const totalTTC = totalHT + totalTaxes;

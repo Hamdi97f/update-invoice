@@ -10,10 +10,6 @@ interface TaxConfigurationProps {
 
 const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) => {
   const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [autoTvaSettings, setAutoTvaSettings] = useState({
-    enabled: false,
-    calculationBase: 'totalHT' as 'totalHT' | 'totalHTWithPreviousTaxes'
-  });
   const [showForm, setShowForm] = useState(false);
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [formData, setFormData] = useState({
@@ -30,45 +26,8 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
   useEffect(() => {
     if (isReady) {
       loadTaxes();
-      loadAutoTvaSettings();
     }
   }, [isReady]);
-
-  const loadAutoTvaSettings = async () => {
-    if (!isElectron) {
-      const savedSettings = localStorage.getItem('autoTvaSettings');
-      if (savedSettings) {
-        setAutoTvaSettings(JSON.parse(savedSettings));
-      }
-      return;
-    }
-
-    try {
-      const result = await query('SELECT value FROM settings WHERE key = ?', ['autoTvaSettings']);
-      if (result.length > 0) {
-        setAutoTvaSettings(JSON.parse(result[0].value));
-      }
-    } catch (error) {
-      console.error('Error loading auto TVA settings:', error);
-    }
-  };
-
-  const saveAutoTvaSettings = async (settings: typeof autoTvaSettings) => {
-    if (!isElectron) {
-      localStorage.setItem('autoTvaSettings', JSON.stringify(settings));
-      return;
-    }
-
-    try {
-      await query(
-        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        ['autoTvaSettings', JSON.stringify(settings)]
-      );
-    } catch (error) {
-      console.error('Error saving auto TVA settings:', error);
-      throw error;
-    }
-  };
 
   const loadTaxes = async () => {
     if (!isElectron) {
@@ -289,104 +248,6 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
 
   return (
     <div className="space-y-6">
-      {/* Auto TVA Settings */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center">
-            <div className="bg-blue-100 p-2 rounded-lg mr-3">
-              <Calculator className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-blue-900">TVA Automatique</h3>
-              <p className="text-sm text-blue-700">Génération automatique des lignes de TVA selon les taux des produits</p>
-            </div>
-          </div>
-          <div className="relative inline-block w-12 mr-2 align-middle select-none">
-            <input
-              type="checkbox"
-              id="toggle-auto-tva"
-              checked={autoTvaSettings.enabled}
-              onChange={async (e) => {
-                const newSettings = { ...autoTvaSettings, enabled: e.target.checked };
-                setAutoTvaSettings(newSettings);
-                try {
-                  await saveAutoTvaSettings(newSettings);
-                } catch (error) {
-                  alert('Erreur lors de la sauvegarde des paramètres TVA Auto');
-                }
-              }}
-              className="sr-only"
-            />
-            <label
-              htmlFor="toggle-auto-tva"
-              className={`block overflow-hidden h-6 rounded-full cursor-pointer ${
-                autoTvaSettings.enabled ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform ${
-                  autoTvaSettings.enabled ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              ></span>
-            </label>
-          </div>
-        </div>
-
-        {autoTvaSettings.enabled && (
-          <div className="space-y-4">
-            <div className="bg-white p-4 rounded-lg border border-blue-200">
-              <h4 className="font-medium text-blue-900 mb-3">Configuration de la TVA Auto</h4>
-              
-              <div>
-                <label className="block text-sm font-medium text-blue-800 mb-2">
-                  Base de calcul pour la TVA Auto
-                </label>
-                <select
-                  value={autoTvaSettings.calculationBase}
-                  onChange={async (e) => {
-                    const newSettings = { 
-                      ...autoTvaSettings, 
-                      calculationBase: e.target.value as 'totalHT' | 'totalHTWithPreviousTaxes' 
-                    };
-                    setAutoTvaSettings(newSettings);
-                    try {
-                      await saveAutoTvaSettings(newSettings);
-                    } catch (error) {
-                      alert('Erreur lors de la sauvegarde des paramètres TVA Auto');
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="totalHT">Total HT uniquement</option>
-                  <option value="totalHTWithPreviousTaxes">Total HT + taxes précédentes</option>
-                </select>
-                <p className="text-xs text-blue-600 mt-1">
-                  {autoTvaSettings.calculationBase === 'totalHT' 
-                    ? 'La TVA sera calculée sur le montant HT de chaque groupe de produits'
-                    : 'La TVA sera calculée après application des autres taxes configurées'
-                  }
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-start">
-                <CheckCircle className="w-5 h-5 text-green-600 mr-2 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-green-900">Fonctionnement de la TVA Auto</h4>
-                  <ul className="text-sm text-green-700 mt-2 space-y-1">
-                    <li>• Génère automatiquement les lignes "TVA (7%)", "TVA (19%)", etc.</li>
-                    <li>• Évite la duplication avec les taxes configurées manuellement</li>
-                    <li>• Groupe les produits par taux de TVA pour un calcul précis</li>
-                    <li>• S'applique à tous les types de documents (factures, devis, etc.)</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Header */}
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">Configuration des taxes</h3>

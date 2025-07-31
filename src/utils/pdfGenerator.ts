@@ -652,32 +652,6 @@ export const generateCombinedFacturesPDF = async (factures: Facture[]) => {
   }
 };
 
-// Helper function to get auto TVA settings
-const getAutoTvaSettings = async (isElectron: boolean, query?: any) => {
-  const defaultSettings = {
-    enabled: false,
-    calculationBase: 'totalHT' as 'totalHT' | 'totalHTWithPreviousTaxes'
-  };
-
-  try {
-    if (isElectron && query) {
-      const result = await query('SELECT value FROM settings WHERE key = ?', ['autoTvaSettings']);
-      if (result.length > 0) {
-        return { ...defaultSettings, ...JSON.parse(result[0].value) };
-      }
-    } else {
-      const savedSettings = localStorage.getItem('autoTvaSettings');
-      if (savedSettings) {
-        return { ...defaultSettings, ...JSON.parse(savedSettings) };
-      }
-    }
-  } catch (error) {
-    console.error('Error loading auto TVA settings:', error);
-  }
-
-  return defaultSettings;
-};
-
 export const generateFacturePDF = async (facture: Facture) => {
   try {
     // Load lines if not already loaded
@@ -744,9 +718,6 @@ export const generateFacturePDF = async (facture: Facture) => {
               const applicableDocuments = JSON.parse(tax.applicableDocuments);
               if (!applicableDocuments.includes('factures')) continue;
               
-              // Load auto TVA settings for proper calculation
-              const autoTvaSettings = await getAutoTvaSettings(isElectron, query);
-              
               let base: number;
               let montant: number;
               
@@ -754,25 +725,12 @@ export const generateFacturePDF = async (facture: Facture) => {
                 base = 0;
                 montant = tax.valeur;
               } else {
-                // For TVA taxes with Auto TVA enabled, apply only to matching products
-                if (autoTvaSettings.enabled && tax.nom.toLowerCase().includes('tva')) {
-                  // Find products with matching TVA rate
-                  const matchingProducts = facture.lignes.filter(ligne => ligne.produit?.tva === tax.valeur);
-                  if (matchingProducts.length > 0) {
-                    base = matchingProducts.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-                    montant = (base * tax.valeur) / 100;
-                  } else {
-                    continue; // Skip if no matching products
-                  }
+                if (tax.calculationBase === 'totalHT') {
+                  base = totalHT;
                 } else {
-                  // Regular tax calculation
-                  if (tax.calculationBase === 'totalHT') {
-                    base = totalHT;
-                  } else {
-                    base = runningTotal;
-                  }
-                  montant = (base * tax.valeur) / 100;
+                  base = runningTotal;
                 }
+                montant = (base * tax.valeur) / 100;
               }
               
               facture.taxes.push({
@@ -785,46 +743,6 @@ export const generateFacturePDF = async (facture: Facture) => {
               runningTotal += montant;
               facture.totalTaxes += montant;
             }
-            
-            // Update totalTTC to include taxes
-            facture.totalTTC = facture.totalHT + facture.totalTaxes;
-          } else {
-            // If no configured taxes, calculate product TVA groups (Auto TVA fallback)
-            const autoTvaSettings = await getAutoTvaSettings(isElectron, query);
-            const productTVAGroups = new Map<number, { base: number, rate: number }>();
-            
-            if (autoTvaSettings.enabled) {
-              facture.lignes.forEach(ligne => {
-                const tvaRate = ligne.produit?.tva || 0;
-                if (tvaRate > 0) {
-                  const montantHT = ligne.montantHT;
-                  
-                  if (productTVAGroups.has(tvaRate)) {
-                    const existing = productTVAGroups.get(tvaRate)!;
-                    existing.base += montantHT;
-                  } else {
-                    productTVAGroups.set(tvaRate, { base: montantHT, rate: tvaRate });
-                  }
-                }
-              });
-            }
-            
-            // Add TVA calculations for each rate
-            facture.taxes = [];
-            facture.totalTaxes = 0;
-            
-            productTVAGroups.forEach((group, rate) => {
-              const montant = (group.base * rate) / 100;
-              
-              facture.taxes.push({
-                taxId: `product-tva-${rate}`,
-                nom: `TVA (${rate}%)`,
-                base: group.base,
-                montant
-              });
-              
-              facture.totalTaxes += montant;
-            });
             
             // Update totalTTC to include taxes
             facture.totalTTC = facture.totalHT + facture.totalTaxes;

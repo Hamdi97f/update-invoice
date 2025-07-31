@@ -1,11 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import { Save, Settings as SettingsIcon, Building2, FileText, Calculator, Palette, Shield, Eye, EyeOff, Download, Upload, RefreshCw, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Save, FileText, Receipt, Truck, ShoppingCart, Settings as SettingsIcon, Calculator, Palette, Upload, Eye, RefreshCw, Info, Database, Download, Upload as UploadIcon, Shield } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
 import TaxConfiguration from './TaxConfiguration';
 import DocumentTemplateSettings from './DocumentTemplateSettings';
+import { Tax } from '../types';
+
+interface NumberingSettings {
+  factures: {
+    prefix: string;
+    startNumber: number;
+    currentNumber: number;
+    includeYear: boolean;
+  };
+  devis: {
+    prefix: string;
+    startNumber: number;
+    currentNumber: number;
+    includeYear: boolean;
+  };
+  bonsLivraison: {
+    prefix: string;
+    startNumber: number;
+    currentNumber: number;
+    includeYear: boolean;
+  };
+  commandesFournisseur: {
+    prefix: string;
+    startNumber: number;
+    currentNumber: number;
+    includeYear: boolean;
+  };
+}
+
+interface InvoiceSettings {
+  useEcheanceDate: boolean;
+}
 
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'taxes' | 'templates' | 'security' | 'backup'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'taxes' | 'templates' | 'invoice' | 'updates' | 'backup' | 'currency'>('company');
+  const [settings, setSettings] = useState<NumberingSettings>({
+    factures: { prefix: 'FA', startNumber: 1, currentNumber: 1, includeYear: true },
+    devis: { prefix: 'DV', startNumber: 1, currentNumber: 1, includeYear: true },
+    bonsLivraison: { prefix: 'BL', startNumber: 1, currentNumber: 1, includeYear: true },
+    commandesFournisseur: { prefix: 'CF', startNumber: 1, currentNumber: 1, includeYear: true }
+  });
+
   const [companyInfo, setCompanyInfo] = useState({
     nom: 'Votre Entreprise',
     adresse: '123 Avenue de la République',
@@ -16,99 +55,156 @@ const Settings: React.FC = () => {
     email: 'contact@entreprise.tn',
     siret: '',
     tva: '',
-    matriculeFiscal: 'MF123456789'
+    matriculeFiscal: ''
   });
 
-  const [numberingSettings, setNumberingSettings] = useState({
-    factures: { prefix: 'FA', startNumber: 1, currentNumber: 1, includeYear: true },
-    devis: { prefix: 'DV', startNumber: 1, currentNumber: 1, includeYear: true },
-    bonsLivraison: { prefix: 'BL', startNumber: 1, currentNumber: 1, includeYear: true },
-    commandesFournisseur: { prefix: 'CF', startNumber: 1, currentNumber: 1, includeYear: true }
-  });
-
-  const [invoiceSettings, setInvoiceSettings] = useState({
+  const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings>({
     useEcheanceDate: true
   });
 
-  const [passwordSettings, setPasswordSettings] = useState({
-    enabled: false,
-    password: ''
+  const [currencySettings, setCurrencySettingsState] = useState({
+    symbol: 'TND',
+    decimals: 3,
+    position: 'after' as 'before' | 'after'
   });
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  // Security settings
+  const [securitySettings, setSecuritySettings] = useState({
+    passwordEnabled: false,
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
-  const { query, backupDatabase, restoreDatabase, isElectron, isReady } = useDatabase();
+  const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [appVersion, setAppVersion] = useState<string>('1.0.1');
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  
+  // Backup and restore states
+  const [backupInProgress, setBackupInProgress] = useState(false);
+  const [restoreInProgress, setRestoreInProgress] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  
+  // Save button state
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const { query, isReady, backupDatabase, restoreDatabase } = useDatabase();
+  
+  // Use refs to store the latest state values
+  const settingsRef = useRef(settings);
+  const companyInfoRef = useRef(companyInfo);
+  const invoiceSettingsRef = useRef(invoiceSettings);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  
+  useEffect(() => {
+    companyInfoRef.current = companyInfo;
+  }, [companyInfo]);
+  
+  useEffect(() => {
+    invoiceSettingsRef.current = invoiceSettings;
+  }, [invoiceSettings]);
+
+  useEffect(() => {
+    // Update localStorage when currency settings change
+    localStorage.setItem('currencySettings', JSON.stringify(currencySettings));
+  }, [currencySettings]);
 
   useEffect(() => {
     if (isReady) {
       loadSettings();
+      if (window.electronAPI?.getAppVersion) {
+        window.electronAPI.getAppVersion().then((version: string) => {
+          setAppVersion(version);
+        }).catch((err: any) => {
+          console.error('Error getting app version:', err);
+        });
+      }
     }
   }, [isReady]);
 
   const loadSettings = async () => {
     if (!isReady) return;
-    
+
     try {
-      setIsLoading(true);
-      
-      if (isElectron) {
-        // Load company info
-        const companyResult = await query('SELECT value FROM settings WHERE key = ?', ['company']);
-        if (companyResult.length > 0) {
-          setCompanyInfo(JSON.parse(companyResult[0].value));
-        }
+      // Create settings table if it doesn't exist
+      await query(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      `);
 
-        // Load numbering settings
-        const numberingResult = await query('SELECT value FROM settings WHERE key = ?', ['numbering']);
-        if (numberingResult.length > 0) {
-          setNumberingSettings(JSON.parse(numberingResult[0].value));
-        }
+      // Load numbering settings
+      const numberingResult = await query('SELECT value FROM settings WHERE key = ?', ['numbering']);
+      if (numberingResult.length > 0) {
+        const loadedSettings = JSON.parse(numberingResult[0].value);
+        // Ensure backward compatibility - add includeYear if missing
+        Object.keys(loadedSettings).forEach(key => {
+          if (loadedSettings[key] && typeof loadedSettings[key].includeYear === 'undefined') {
+            loadedSettings[key].includeYear = true; // Default to true for existing settings
+          }
+        });
+        setSettings(loadedSettings);
+      }
 
-        // Load invoice settings
-        const invoiceResult = await query('SELECT value FROM settings WHERE key = ?', ['invoiceSettings']);
-        if (invoiceResult.length > 0) {
-          setInvoiceSettings(JSON.parse(invoiceResult[0].value));
-        }
+      // Load company info
+      const companyResult = await query('SELECT value FROM settings WHERE key = ?', ['company']);
+      if (companyResult.length > 0) {
+        setCompanyInfo(JSON.parse(companyResult[0].value));
+      }
 
-        // Load password settings
+      // Load invoice settings
+      const invoiceSettingsResult = await query('SELECT value FROM settings WHERE key = ?', ['invoiceSettings']);
+      if (invoiceSettingsResult.length > 0) {
+        setInvoiceSettings(JSON.parse(invoiceSettingsResult[0].value));
+      } else {
+        // Set default and save
+        const defaultInvoiceSettings = { useEcheanceDate: true };
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['invoiceSettings', JSON.stringify(defaultInvoiceSettings)]
+        );
+      }
+
+      // Load currency settings
+      try {
+        const currencyResult = await query('SELECT value FROM settings WHERE key = ?', ['currencySettings']);
+        if (currencyResult.length > 0) {
+          const loadedCurrencySettings = JSON.parse(currencyResult[0].value);
+          setCurrencySettingsState(loadedCurrencySettings);
+          // Also save to localStorage for immediate use
+          localStorage.setItem('currencySettings', JSON.stringify(loadedCurrencySettings));
+        } else {
+          // Set default and save
+          const defaultCurrencySettings = { symbol: 'TND', decimals: 3, position: 'after' };
+          await query(
+            'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+            ['currencySettings', JSON.stringify(defaultCurrencySettings)]
+          );
+          setCurrencySettingsState(defaultCurrencySettings);
+          localStorage.setItem('currencySettings', JSON.stringify(defaultCurrencySettings));
+        }
+      } catch (error) {
+        console.error('Error loading currency settings:', error);
+      }
+
+      // Load security settings
+      try {
         const passwordResult = await query('SELECT value FROM settings WHERE key = ?', ['appPassword']);
         if (passwordResult.length > 0) {
-          setPasswordSettings({
-            enabled: true,
-            password: passwordResult[0].value
-          });
+          setSecuritySettings(prev => ({ ...prev, passwordEnabled: true }));
         }
-      } else {
-        // Load from localStorage for web version
-        const savedCompany = localStorage.getItem('companyInfo');
-        if (savedCompany) {
-          setCompanyInfo(JSON.parse(savedCompany));
-        }
-
-        const savedNumbering = localStorage.getItem('numberingSettings');
-        if (savedNumbering) {
-          setNumberingSettings(JSON.parse(savedNumbering));
-        }
-
-        const savedInvoice = localStorage.getItem('invoiceSettings');
-        if (savedInvoice) {
-          setInvoiceSettings(JSON.parse(savedInvoice));
-        }
-
-        const savedPassword = localStorage.getItem('appPassword');
-        if (savedPassword) {
-          setPasswordSettings({
-            enabled: true,
-            password: savedPassword
-          });
-        }
+      } catch (error) {
+        console.error('Error loading security settings:', error);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -116,30 +212,44 @@ const Settings: React.FC = () => {
     if (!isReady) return;
     
     setIsSaving(true);
+    setSaveSuccess(false);
+
     try {
-      if (isElectron) {
-        await query('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['company', JSON.stringify(companyInfo)]);
-        await query('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['numbering', JSON.stringify(numberingSettings)]);
-        await query('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['invoiceSettings', JSON.stringify(invoiceSettings)]);
-        
-        if (passwordSettings.enabled && passwordSettings.password) {
-          await query('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['appPassword', passwordSettings.password]);
-        } else {
-          await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
-        }
-      } else {
-        localStorage.setItem('companyInfo', JSON.stringify(companyInfo));
-        localStorage.setItem('numberingSettings', JSON.stringify(numberingSettings));
-        localStorage.setItem('invoiceSettings', JSON.stringify(invoiceSettings));
-        
-        if (passwordSettings.enabled && passwordSettings.password) {
-          localStorage.setItem('appPassword', passwordSettings.password);
-        } else {
-          localStorage.removeItem('appPassword');
-        }
+      // Use the ref values to ensure we're using the latest state
+      await query(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['numbering', JSON.stringify(settingsRef.current)]
+      );
+
+      await query(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['company', JSON.stringify(companyInfoRef.current)]
+      );
+
+      await query(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['invoiceSettings', JSON.stringify(invoiceSettingsRef.current)]
+      );
+
+      await query(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['currencySettings', JSON.stringify(currencySettings)]
+      );
+
+      // Save security settings if password is being set
+      if (securitySettings.passwordEnabled && securitySettings.newPassword) {
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['appPassword', securitySettings.newPassword]
+        );
+      } else if (!securitySettings.passwordEnabled) {
+        await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
       }
-      
-      alert('Paramètres sauvegardés avec succès');
+
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Erreur lors de la sauvegarde des paramètres');
@@ -148,52 +258,218 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleBackup = async () => {
-    if (!isElectron) {
-      alert('La sauvegarde n\'est disponible qu\'en mode bureau');
+  const handleNumberingChange = (docType: keyof NumberingSettings, field: string, value: string | number | boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      [docType]: {
+        ...prev[docType],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleCompanyChange = (field: string, value: string) => {
+    setCompanyInfo(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleInvoiceSettingsChange = (field: string, value: boolean) => {
+    setInvoiceSettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleCurrencySettingsChange = (field: string, value: string | number) => {
+    setCurrencySettingsState(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSecurityChange = (field: string, value: string | boolean) => {
+    setSecuritySettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handlePasswordSave = async () => {
+    if (!securitySettings.passwordEnabled) {
+      // Disable password protection
+      try {
+        if (isElectron) {
+          await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
+        } else {
+          localStorage.removeItem('appPassword');
+        }
+        setSecuritySettings({
+          passwordEnabled: false,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        });
+        alert('Protection par mot de passe désactivée');
+      } catch (error) {
+        console.error('Error disabling password:', error);
+        alert('Erreur lors de la désactivation du mot de passe');
+      }
       return;
     }
 
+    if (!securitySettings.newPassword) {
+      alert('Veuillez entrer un nouveau mot de passe');
+      return;
+    }
+
+    if (securitySettings.newPassword !== securitySettings.confirmPassword) {
+      alert('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    if (securitySettings.newPassword.length < 4) {
+      alert('Le mot de passe doit contenir au moins 4 caractères');
+      return;
+    }
+
+    try {
+      if (isElectron) {
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['appPassword', securitySettings.newPassword]
+        );
+      } else {
+        localStorage.setItem('appPassword', securitySettings.newPassword);
+      }
+
+      setSecuritySettings({
+        passwordEnabled: true,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+
+      alert('Mot de passe configuré avec succès');
+    } catch (error) {
+      console.error('Error saving password:', error);
+      alert('Erreur lors de la sauvegarde du mot de passe');
+    }
+  };
+
+  const resetCurrentNumbers = async (docType: keyof NumberingSettings) => {
+    if (window.confirm(`Êtes-vous sûr de vouloir remettre à zéro la numérotation des ${docType} ?`)) {
+      setSettings(prev => ({
+        ...prev,
+        [docType]: {
+          ...prev[docType],
+          currentNumber: prev[docType].startNumber
+        }
+      }));
+    }
+  };
+
+  const checkForUpdates = async () => {
+    if (window.electronAPI?.checkForUpdates) {
+      setCheckingForUpdates(true);
+      setUpdateMessage(null);
+      
+      try {
+        const result = await window.electronAPI.checkForUpdates();
+        if (result.updateAvailable) {
+          setUpdateMessage(`Une mise à jour (v${result.version}) est disponible et sera installée automatiquement.`);
+        } else if (result.error) {
+          setUpdateMessage(`Erreur lors de la vérification: ${result.error}`);
+        } else {
+          setUpdateMessage('Vous utilisez déjà la dernière version de l\'application.');
+        }
+      } catch (error) {
+        console.error('Error checking for updates:', error);
+        setUpdateMessage('Erreur lors de la vérification des mises à jour. Veuillez réessayer plus tard.');
+      } finally {
+        setCheckingForUpdates(false);
+      }
+    } else {
+      setUpdateMessage('La vérification des mises à jour n\'est pas disponible pour le moment.');
+    }
+  };
+
+  const handleBackupDatabase = async () => {
+    setBackupInProgress(true);
+    setBackupMessage(null);
+    
     try {
       const result = await backupDatabase();
       if (result.success) {
-        alert(`Base de données sauvegardée avec succès dans :\n${result.path}`);
+        setBackupMessage(`Sauvegarde réussie. Fichier enregistré: ${result.path}`);
       } else {
-        alert('Erreur lors de la sauvegarde : ' + (result.error || 'Erreur inconnue'));
+        setBackupMessage(`Erreur lors de la sauvegarde: ${result.error || 'Opération annulée'}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error backing up database:', error);
-      alert('Erreur lors de la sauvegarde de la base de données');
+      setBackupMessage(`Erreur lors de la sauvegarde: ${error.message}`);
+    } finally {
+      setBackupInProgress(false);
     }
   };
 
-  const handleRestore = async () => {
-    if (!isElectron) {
-      alert('La restauration n\'est disponible qu\'en mode bureau');
+  const handleRestoreDatabase = async () => {
+    // Show warning
+    if (!window.confirm('ATTENTION: La restauration remplacera toutes vos données actuelles. Cette action est irréversible. Voulez-vous continuer?')) {
       return;
     }
-
+    
+    setRestoreInProgress(true);
+    setBackupMessage(null);
+    
     try {
       const result = await restoreDatabase();
       if (result.success) {
-        alert('Base de données restaurée avec succès. L\'application va redémarrer.');
-        window.location.reload();
+        setBackupMessage('Restauration réussie. L\'application va redémarrer.');
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
       } else {
-        alert('Erreur lors de la restauration : ' + (result.error || 'Erreur inconnue'));
+        setBackupMessage(`Erreur lors de la restauration: ${result.error || 'Opération annulée'}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error restoring database:', error);
-      alert('Erreur lors de la restauration de la base de données');
+      setBackupMessage(`Erreur lors de la restauration: ${error.message}`);
+    } finally {
+      setRestoreInProgress(false);
     }
   };
 
+  const generatePreviewNumber = (docType: keyof NumberingSettings) => {
+    const config = settings[docType];
+    const year = new Date().getFullYear();
+    const number = String(config.currentNumber).padStart(3, '0');
+    
+    if (config.includeYear) {
+      return `${config.prefix}-${year}-${number}`;
+    } else {
+      return `${config.prefix}-${number}`;
+    }
+  };
+
+  const documentTypes = [
+    { key: 'factures' as keyof NumberingSettings, label: 'Factures', icon: Receipt, color: 'text-blue-600' },
+    { key: 'devis' as keyof NumberingSettings, label: 'Devis', icon: FileText, color: 'text-green-600' },
+    { key: 'bonsLivraison' as keyof NumberingSettings, label: 'Bons de livraison', icon: Truck, color: 'text-orange-600' },
+    { key: 'commandesFournisseur' as keyof NumberingSettings, label: 'Commandes fournisseur', icon: ShoppingCart, color: 'text-purple-600' }
+  ];
+
   const tabs = [
-    { id: 'company', label: 'Entreprise', icon: Building2 },
+    { id: 'company', label: 'Entreprise', icon: SettingsIcon },
     { id: 'numbering', label: 'Numérotation', icon: FileText },
-    { id: 'taxes', label: 'Taxes', icon: Calculator },
-    { id: 'templates', label: 'Modèles', icon: Palette },
+    { id: 'invoice', label: 'Factures', icon: Receipt },
+    { id: 'currency', label: 'Devise', icon: Calculator },
     { id: 'security', label: 'Sécurité', icon: Shield },
-    { id: 'backup', label: 'Sauvegarde', icon: Download }
+    { id: 'taxes', label: 'Taxes', icon: Calculator },
+    { id: 'templates', label: 'Modèles & Design', icon: Palette },
+    { id: 'backup', label: 'Sauvegarde', icon: Database },
+    { id: 'updates', label: 'Mises à jour', icon: RefreshCw }
   ];
 
   if (!isReady) {
@@ -207,30 +483,17 @@ const Settings: React.FC = () => {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Paramètres</h2>
-          <p className="text-gray-600">Configurez votre application</p>
+      <div className="bg-gradient-to-r from-gray-600 to-gray-700 rounded-lg p-6 text-white">
+        <div className="flex items-center">
+          <SettingsIcon className="w-8 h-8 mr-3" />
+          <div>
+            <h2 className="text-2xl font-bold">Paramètres</h2>
+            <p className="text-gray-200">Configuration de l'application, numérotation des documents et personnalisation</p>
+          </div>
         </div>
-        <button
-          onClick={saveSettings}
-          disabled={isSaving}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center space-x-2 disabled:opacity-50"
-        >
-          <Save className="w-5 h-5" />
-          <span>{isSaving ? 'Sauvegarde...' : 'Sauvegarder'}</span>
-        </button>
       </div>
 
       {/* Tabs */}
@@ -257,406 +520,846 @@ const Settings: React.FC = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        {/* Company Tab */}
-        {activeTab === 'company' && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900">Informations de l'entreprise</h3>
+      {activeTab === 'company' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Informations de l'entreprise</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nom de l'entreprise
+              </label>
+              <input
+                type="text"
+                value={companyInfo.nom}
+                onChange={(e) => handleCompanyChange('nom', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Adresse
+              </label>
+              <input
+                type="text"
+                value={companyInfo.adresse}
+                onChange={(e) => handleCompanyChange('adresse', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Code postal
+              </label>
+              <input
+                type="text"
+                value={companyInfo.codePostal}
+                onChange={(e) => handleCompanyChange('codePostal', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Ville
+              </label>
+              <input
+                type="text"
+                value={companyInfo.ville}
+                onChange={(e) => handleCompanyChange('ville', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pays
+              </label>
+              <input
+                type="text"
+                value={companyInfo.pays}
+                onChange={(e) => handleCompanyChange('pays', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Téléphone
+              </label>
+              <input
+                type="tel"
+                value={companyInfo.telephone}
+                onChange={(e) => handleCompanyChange('telephone', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={companyInfo.email}
+                onChange={(e) => handleCompanyChange('email', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                SIRET
+              </label>
+              <input
+                type="text"
+                value={companyInfo.siret}
+                onChange={(e) => handleCompanyChange('siret', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                N° TVA
+              </label>
+              <input
+                type="text"
+                value={companyInfo.tva}
+                onChange={(e) => handleCompanyChange('tva', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nom de l'entreprise
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.nom}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, nom: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={companyInfo.email}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Adresse
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.adresse}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, adresse: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Code postal
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.codePostal}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, codePostal: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ville
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.ville}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, ville: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Téléphone
-                </label>
-                <input
-                  type="tel"
-                  value={companyInfo.telephone}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, telephone: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  SIRET
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.siret}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, siret: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Matricule Fiscal
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.matriculeFiscal}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, matriculeFiscal: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Numéro TVA
-                </label>
-                <input
-                  type="text"
-                  value={companyInfo.tva}
-                  onChange={(e) => setCompanyInfo(prev => ({ ...prev, tva: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Matricule Fiscal
+              </label>
+              <input
+                type="text"
+                value={companyInfo.matriculeFiscal}
+                onChange={(e) => handleCompanyChange('matriculeFiscal', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Numbering Tab */}
-        {activeTab === 'numbering' && (
+      {activeTab === 'numbering' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Numérotation des documents</h3>
+          
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900">Numérotation des documents</h3>
-            
-            <div className="space-y-6">
-              {Object.entries(numberingSettings).map(([key, settings]) => (
-                <div key={key} className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-gray-900 mb-3 capitalize">
-                    {key === 'factures' ? 'Factures' :
-                     key === 'devis' ? 'Devis' :
-                     key === 'bonsLivraison' ? 'Bons de livraison' :
-                     'Commandes fournisseur'}
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Préfixe
-                      </label>
-                      <input
-                        type="text"
-                        value={settings.prefix}
-                        onChange={(e) => setNumberingSettings(prev => ({
-                          ...prev,
-                          [key]: { ...prev[key as keyof typeof prev], prefix: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+            {documentTypes.map(({ key, label, icon: Icon, color }) => (
+              <div key={key} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center mb-4">
+                  <Icon className={`w-5 h-5 mr-2 ${color}`} />
+                  <h4 className="text-md font-medium text-gray-900">{label}</h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Préfixe
+                    </label>
+                    <input
+                      type="text"
+                      value={settings[key].prefix}
+                      onChange={(e) => handleNumberingChange(key, 'prefix', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="FA"
+                    />
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Numéro de départ
-                      </label>
-                      <input
-                        type="number"
-                        value={settings.startNumber}
-                        onChange={(e) => setNumberingSettings(prev => ({
-                          ...prev,
-                          [key]: { ...prev[key as keyof typeof prev], startNumber: parseInt(e.target.value) || 1 }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        min="1"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Numéro de départ
+                    </label>
+                    <input
+                      type="number"
+                      value={settings[key].startNumber}
+                      onChange={(e) => handleNumberingChange(key, 'startNumber', parseInt(e.target.value) || 1)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      min="1"
+                    />
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Numéro actuel
-                      </label>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Numéro actuel
+                    </label>
+                    <input
+                      type="number"
+                      value={settings[key].currentNumber}
+                      onChange={(e) => handleNumberingChange(key, 'currentNumber', parseInt(e.target.value) || 1)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      min="1"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Inclure l'année
+                    </label>
+                    <div className="flex items-center h-10">
                       <input
-                        type="number"
-                        value={settings.currentNumber}
-                        onChange={(e) => setNumberingSettings(prev => ({
-                          ...prev,
-                          [key]: { ...prev[key as keyof typeof prev], currentNumber: parseInt(e.target.value) || 1 }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        min="1"
+                        type="checkbox"
+                        checked={settings[key].includeYear}
+                        onChange={(e) => handleNumberingChange(key, 'includeYear', e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
                       />
+                      <span className="text-sm text-gray-600">
+                        {settings[key].includeYear ? 'Avec année' : 'Sans année'}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="mt-3">
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={settings.includeYear}
-                        onChange={(e) => setNumberingSettings(prev => ({
-                          ...prev,
-                          [key]: { ...prev[key as keyof typeof prev], includeYear: e.target.checked }
-                        }))}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="ml-2 text-sm text-gray-700">Inclure l'année dans le numéro</span>
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => resetCurrentNumbers(key)}
+                      className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                    >
+                      Remettre à zéro
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">
+                        <strong>Aperçu du prochain numéro:</strong>
+                      </p>
+                      <p className="text-lg font-mono font-bold text-blue-600">
+                        {generatePreviewNumber(key)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Format:</p>
+                      <p className="text-sm font-medium text-gray-700">
+                        {settings[key].includeYear 
+                          ? `${settings[key].prefix}-ANNÉE-NNN`
+                          : `${settings[key].prefix}-NNN`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Global Settings */}
+          <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="text-md font-medium text-blue-900 mb-3">Options globales</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                onClick={() => {
+                  const newSettings = { ...settings };
+                  Object.keys(newSettings).forEach(key => {
+                    newSettings[key as keyof NumberingSettings].includeYear = true;
+                  });
+                  setSettings(newSettings);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Activer l'année pour tous
+              </button>
+              <button
+                onClick={() => {
+                  const newSettings = { ...settings };
+                  Object.keys(newSettings).forEach(key => {
+                    newSettings[key as keyof NumberingSettings].includeYear = false;
+                  });
+                  setSettings(newSettings);
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Désactiver l'année pour tous
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'invoice' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Paramètres des factures</h3>
+          
+          <div className="space-y-6">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center mb-4">
+                <Receipt className="w-5 h-5 mr-2 text-blue-600" />
+                <h4 className="text-md font-medium text-gray-900">Options des factures</h4>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <label className="font-medium text-gray-900">Utiliser la date d'échéance</label>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Affiche et utilise la date d'échéance dans les factures
+                    </p>
+                  </div>
+                  <div className="relative inline-block w-12 mr-2 align-middle select-none">
+                    <input
+                      type="checkbox"
+                      id="toggle-echeance"
+                      checked={invoiceSettings.useEcheanceDate}
+                      onChange={() => handleInvoiceSettingsChange('useEcheanceDate', !invoiceSettings.useEcheanceDate)}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor="toggle-echeance"
+                      className={`block overflow-hidden h-6 rounded-full cursor-pointer ${
+                        invoiceSettings.useEcheanceDate ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform ${
+                          invoiceSettings.useEcheanceDate ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      ></span>
                     </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Exemple: {settings.includeYear 
-                        ? `${settings.prefix}-${new Date().getFullYear()}-${String(settings.currentNumber).padStart(3, '0')}`
-                        : `${settings.prefix}-${String(settings.currentNumber).padStart(3, '0')}`
-                      }
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 p-4 bg-blue-50 rounded-md">
+                <div className="flex items-start">
+                  <Receipt className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-blue-700">
+                      <strong>Date d'échéance :</strong> {invoiceSettings.useEcheanceDate ? 'Activée' : 'Désactivée'}
+                    </p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      {invoiceSettings.useEcheanceDate 
+                        ? "La date d'échéance sera affichée sur les factures et utilisée pour le suivi des paiements."
+                        : "La date d'échéance ne sera pas utilisée dans les factures."}
                     </p>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
 
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-3">Options des factures</h4>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={invoiceSettings.useEcheanceDate}
-                  onChange={(e) => setInvoiceSettings(prev => ({ ...prev, useEcheanceDate: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2 text-sm text-gray-700">Utiliser la date d'échéance</span>
-              </label>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center mb-4">
+                <Receipt className="w-5 h-5 mr-2 text-red-600" />
+                <h4 className="text-md font-medium text-gray-900">Avoirs</h4>
+              </div>
+              
+              <div className="p-4 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-700">
+                  Les avoirs sont des factures négatives qui annulent ou remboursent partiellement une facture existante.
+                  Vous pouvez créer un avoir à partir d'une facture existante en utilisant le bouton "Créer un avoir" dans la liste des factures.
+                </p>
+                <p className="text-sm text-gray-700 mt-2">
+                  Les avoirs utilisent le même format de numérotation que les factures, mais avec un préfixe "AV" ajouté automatiquement.
+                </p>
+              </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Taxes Tab */}
-        {activeTab === 'taxes' && (
-          <TaxConfiguration />
-        )}
-
-        {/* Templates Tab */}
-        {activeTab === 'templates' && (
-          <DocumentTemplateSettings />
-        )}
-
-        {/* Security Tab */}
-        {activeTab === 'security' && (
+      {activeTab === 'currency' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Paramètres de devise</h3>
+          
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900">Sécurité de l'application</h3>
-            
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center mb-4">
+                <Calculator className="w-5 h-5 mr-2 text-blue-600" />
+                <h4 className="text-md font-medium text-gray-900">Configuration de la devise</h4>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Symbole de devise
+                  </label>
+                  <input
+                    type="text"
+                    value={currencySettings.symbol}
+                    onChange={(e) => handleCurrencySettingsChange('symbol', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="TND"
+                    maxLength={10}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Exemples: TND, EUR, USD, MAD, etc.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nombre de décimales
+                  </label>
+                  <select
+                    value={currencySettings.decimals}
+                    onChange={(e) => handleCurrencySettingsChange('decimals', parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value={0}>0 décimale (ex: 100 TND)</option>
+                    <option value={1}>1 décimale (ex: 100.0 TND)</option>
+                    <option value={2}>2 décimales (ex: 100.00 TND)</option>
+                    <option value={3}>3 décimales (ex: 100.000 TND)</option>
+                    <option value={4}>4 décimales (ex: 100.0000 TND)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Position du symbole
+                  </label>
+                  <select
+                    value={currencySettings.position}
+                    onChange={(e) => handleCurrencySettingsChange('position', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="after">Après le montant (100.000 TND)</option>
+                    <option value="before">Avant le montant (TND 100.000)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Aperçu
+                  </label>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-md">
+                    <span className="text-lg font-medium text-blue-600">
+                      {currencySettings.position === 'before' 
+                        ? `${currencySettings.symbol} ${(1234.567).toFixed(currencySettings.decimals)}`
+                        : `${(1234.567).toFixed(currencySettings.decimals)} ${currencySettings.symbol}`
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <Calculator className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
+                <div>
+                  <p className="text-sm text-blue-700">
+                    <strong>Important :</strong> Ces paramètres affectent l'affichage des montants dans toute l'application.
+                  </p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    Les modifications seront appliquées immédiatement après la sauvegarde et affecteront tous les documents générés.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="text-md font-medium text-gray-900 mb-3">Devises courantes</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {[
+                  { symbol: 'TND', name: 'Dinar Tunisien', decimals: 3 },
+                  { symbol: 'EUR', name: 'Euro', decimals: 2 },
+                  { symbol: 'USD', name: 'Dollar US', decimals: 2 },
+                  { symbol: 'MAD', name: 'Dirham Marocain', decimals: 2 },
+                  { symbol: 'DZD', name: 'Dinar Algérien', decimals: 2 },
+                  { symbol: 'GBP', name: 'Livre Sterling', decimals: 2 },
+                  { symbol: 'CHF', name: 'Franc Suisse', decimals: 2 },
+                  { symbol: 'CAD', name: 'Dollar Canadien', decimals: 2 }
+                ].map((currency) => (
+                  <button
+                    key={currency.symbol}
+                    onClick={() => {
+                      setCurrencySettingsState(prev => ({
+                        ...prev,
+                        symbol: currency.symbol,
+                        decimals: currency.decimals
+                      }));
+                    }}
+                    className="p-2 text-xs bg-white border border-gray-200 rounded hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                    title={currency.name}
+                  >
+                    <div className="font-medium">{currency.symbol}</div>
+                    <div className="text-gray-500">{currency.decimals} déc.</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'security' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Sécurité de l'application</h3>
+          
+          <div className="space-y-6">
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Shield className="w-5 h-5 mr-2 text-blue-600" />
+                <h4 className="text-md font-medium text-gray-900">Protection par mot de passe</h4>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <label className="font-medium text-gray-900">Activer la protection par mot de passe</label>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Protège l'accès à l'application avec un mot de passe
+                    </p>
+                  </div>
+                  <div className="relative inline-block w-12 mr-2 align-middle select-none">
+                    <input
+                      type="checkbox"
+                      id="toggle-password"
+                      checked={securitySettings.passwordEnabled}
+                      onChange={(e) => handleSecurityChange('passwordEnabled', e.target.checked)}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor="toggle-password"
+                      className={`block overflow-hidden h-6 rounded-full cursor-pointer ${
+                        securitySettings.passwordEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform ${
+                          securitySettings.passwordEnabled ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      ></span>
+                    </label>
+                  </div>
+                </div>
+
+                {securitySettings.passwordEnabled && (
+                  <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nouveau mot de passe
+                      </label>
+                      <input
+                        type="password"
+                        value={securitySettings.newPassword}
+                        onChange={(e) => handleSecurityChange('newPassword', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Entrez un mot de passe"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Confirmer le mot de passe
+                      </label>
+                      <input
+                        type="password"
+                        value={securitySettings.confirmPassword}
+                        onChange={(e) => handleSecurityChange('confirmPassword', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Confirmez le mot de passe"
+                      />
+                    </div>
+
+                    <button
+                      onClick={handlePasswordSave}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      Configurer le mot de passe
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Shield className="w-5 h-5 mr-2 text-green-600" />
+                <h4 className="text-md font-medium text-gray-900">Mot de passe maître</h4>
+              </div>
+              
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <Shield className="w-5 h-5 text-green-600 mr-2 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-green-800 font-medium">
+                      Mot de passe maître activé
+                    </p>
+                    <p className="text-sm text-green-700 mt-1">
+                      Le mot de passe "TOPPACK" peut toujours déverrouiller l'application, 
+                      même si un mot de passe utilisateur est défini. Cette fonctionnalité 
+                      permet un accès de récupération en cas d'oubli du mot de passe principal.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div className="flex items-start">
                 <Shield className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-yellow-900">Protection par mot de passe</h4>
-                  <p className="text-sm text-yellow-700 mt-1">
-                    Protégez l'accès à votre application avec un mot de passe. 
-                    Ce mot de passe sera demandé à chaque démarrage de l'application.
+                  <p className="text-sm text-yellow-800 font-medium">
+                    Important : Sécurité des données
                   </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                <div>
-                  <label className="font-medium text-gray-900">Activer la protection par mot de passe</label>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Demander un mot de passe au démarrage de l'application
-                  </p>
-                </div>
-                <div className="relative inline-block w-12 mr-2 align-middle select-none">
-                  <input
-                    type="checkbox"
-                    id="toggle-password"
-                    checked={passwordSettings.enabled}
-                    onChange={(e) => setPasswordSettings(prev => ({ ...prev, enabled: e.target.checked }))}
-                    className="sr-only"
-                  />
-                  <label
-                    htmlFor="toggle-password"
-                    className={`block overflow-hidden h-6 rounded-full cursor-pointer ${
-                      passwordSettings.enabled ? 'bg-blue-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform ${
-                        passwordSettings.enabled ? 'translate-x-6' : 'translate-x-0'
-                      }`}
-                    ></span>
-                  </label>
-                </div>
-              </div>
-
-              {passwordSettings.enabled && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Mot de passe
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={passwordSettings.password}
-                      onChange={(e) => setPasswordSettings(prev => ({ ...prev, password: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
-                      placeholder="Entrez votre mot de passe"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Ce mot de passe sera demandé à chaque ouverture de l'application
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Backup Tab */}
-        {activeTab === 'backup' && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900">Sauvegarde et restauration</h3>
-            
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start">
-                <Download className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-blue-900">Sauvegarde des données</h4>
-                  <p className="text-sm text-blue-700 mt-1">
-                    Créez une sauvegarde de toutes vos données (clients, produits, factures, etc.) 
-                    pour les protéger contre la perte de données.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <div className="text-center">
-                  <div className="bg-green-100 p-3 rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center">
-                    <Download className="w-6 h-6 text-green-600" />
-                  </div>
-                  <h4 className="font-medium text-gray-900 mb-2">Sauvegarder</h4>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Créer une copie de sauvegarde de votre base de données
-                  </p>
-                  <button
-                    onClick={handleBackup}
-                    className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                    disabled={!isElectron}
-                  >
-                    Créer une sauvegarde
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <div className="text-center">
-                  <div className="bg-orange-100 p-3 rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center">
-                    <Upload className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <h4 className="font-medium text-gray-900 mb-2">Restaurer</h4>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Restaurer vos données à partir d'une sauvegarde
-                  </p>
-                  <button
-                    onClick={handleRestore}
-                    className="w-full bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
-                    disabled={!isElectron}
-                  >
-                    Restaurer une sauvegarde
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {!isElectron && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-start">
-                  <RefreshCw className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" />
-                  <div>
-                    <h4 className="font-medium text-yellow-900">Mode web</h4>
-                    <p className="text-sm text-yellow-700 mt-1">
-                      Les fonctionnalités de sauvegarde et restauration ne sont disponibles qu'en mode bureau.
-                      En mode web, vos données sont stockées localement dans votre navigateur.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start">
-                <Shield className="w-5 h-5 text-red-600 mr-2 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-red-900">Important</h4>
-                  <ul className="text-sm text-red-700 mt-1 space-y-1">
-                    <li>• Effectuez des sauvegardes régulières de vos données</li>
-                    <li>• Stockez vos sauvegardes dans un lieu sûr</li>
-                    <li>• La restauration remplacera toutes vos données actuelles</li>
-                    <li>• Testez vos sauvegardes périodiquement</li>
+                  <ul className="text-sm text-yellow-700 mt-1 space-y-1">
+                    <li>• Choisissez un mot de passe fort et unique</li>
+                    <li>• Ne partagez jamais votre mot de passe</li>
+                    <li>• Le mot de passe maître "TOPPACK" est intégré pour la récupération</li>
+                    <li>• Sauvegardez régulièrement vos données</li>
                   </ul>
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {activeTab === 'taxes' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <TaxConfiguration onTaxesChange={setTaxes} />
+        </div>
+      )}
+
+      {activeTab === 'templates' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <DocumentTemplateSettings />
+        </div>
+      )}
+
+      {activeTab === 'backup' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Sauvegarde et restauration</h3>
+          
+          <div className="space-y-6">
+            {/* Backup Section */}
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Download className="w-5 h-5 mr-2 text-blue-600" />
+                <h4 className="text-md font-medium text-gray-900">Sauvegarder la base de données</h4>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-4">
+                Créez une sauvegarde complète de toutes vos données. Vous pourrez restaurer cette sauvegarde ultérieurement si nécessaire.
+              </p>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start">
+                  <Info className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-blue-700">
+                      <strong>Important:</strong> Sauvegardez régulièrement vos données pour éviter toute perte en cas de problème.
+                    </p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      La sauvegarde contient toutes vos données: clients, produits, factures, devis, etc.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={handleBackupDatabase}
+                disabled={backupInProgress}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {backupInProgress ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Sauvegarde en cours...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Sauvegarder maintenant
+                  </>
+                )}
+              </button>
+            </div>
+            
+            {/* Restore Section */}
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <UploadIcon className="w-5 h-5 mr-2 text-green-600" />
+                <h4 className="text-md font-medium text-gray-900">Restaurer une sauvegarde</h4>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-4">
+                Restaurez une sauvegarde précédemment créée. Attention: cette action remplacera toutes vos données actuelles.
+              </p>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start">
+                  <Info className="w-5 h-5 text-red-600 mr-2 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-red-700">
+                      <strong>Attention:</strong> La restauration remplacera toutes vos données actuelles. Cette action est irréversible.
+                    </p>
+                    <p className="text-sm text-red-700 mt-1">
+                      Assurez-vous de sauvegarder vos données actuelles avant de procéder à une restauration.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={handleRestoreDatabase}
+                disabled={restoreInProgress}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {restoreInProgress ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Restauration en cours...
+                  </>
+                ) : (
+                  <>
+                    <UploadIcon className="w-4 h-4 mr-2" />
+                    Restaurer une sauvegarde
+                  </>
+                )}
+              </button>
+            </div>
+            
+            {/* Status Message */}
+            {backupMessage && (
+              <div className={`p-4 rounded-lg ${backupMessage.includes('réussie') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                {backupMessage}
+              </div>
+            )}
+            
+            {/* Tips */}
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Info className="w-5 h-5 mr-2 text-gray-600" />
+                <h4 className="text-md font-medium text-gray-900">Conseils pour la sauvegarde</h4>
+              </div>
+              
+              <div className="space-y-3 text-sm text-gray-600">
+                <p>
+                  1. Effectuez des sauvegardes régulières, idéalement après chaque session de travail importante.
+                </p>
+                <p>
+                  2. Stockez vos sauvegardes dans plusieurs endroits (disque dur externe, cloud, etc.).
+                </p>
+                <p>
+                  3. Nommez vos sauvegardes avec la date pour faciliter leur identification.
+                </p>
+                <p>
+                  4. Testez régulièrement la restauration pour vous assurer que vos sauvegardes fonctionnent.
+                </p>
+                <p className="text-blue-600 font-medium mt-2">
+                  La sauvegarde est la meilleure protection contre la perte de données.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'updates' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Mises à jour de l'application</h3>
+          
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+              <div className="flex items-start">
+                <Info className="w-6 h-6 text-blue-600 mr-3 mt-0.5" />
+                <div>
+                  <h4 className="text-md font-medium text-blue-900">Informations sur la version</h4>
+                  <p className="text-sm text-blue-700 mt-2">
+                    Version actuelle: <span className="font-semibold">{appVersion}</span>
+                  </p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    L'application vérifie automatiquement les mises à jour au démarrage et les installe automatiquement.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <RefreshCw className="w-5 h-5 mr-2 text-green-600" />
+                <h4 className="text-md font-medium text-gray-900">Vérifier les mises à jour</h4>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-4">
+                Vous pouvez vérifier manuellement si une nouvelle version de l'application est disponible.
+              </p>
+              
+              <button
+                onClick={checkForUpdates}
+                disabled={checkingForUpdates}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {checkingForUpdates ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Vérification en cours...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Vérifier les mises à jour
+                  </>
+                )}
+              </button>
+              
+              {updateMessage && (
+                <div className={`mt-4 p-4 rounded-md ${updateMessage.includes('erreur') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                  {updateMessage}
+                </div>
+              )}
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <Info className="w-5 h-5 mr-2 text-gray-600" />
+                <h4 className="text-md font-medium text-gray-900">Comment fonctionnent les mises à jour</h4>
+              </div>
+              
+              <div className="space-y-3 text-sm text-gray-600">
+                <p>
+                  1. L'application vérifie automatiquement les mises à jour au démarrage.
+                </p>
+                <p>
+                  2. Si une mise à jour est disponible, elle sera téléchargée en arrière-plan.
+                </p>
+                <p>
+                  3. Une fois téléchargée, vous serez invité à redémarrer l'application pour installer la mise à jour.
+                </p>
+                <p>
+                  4. Après le redémarrage, vous utiliserez automatiquement la nouvelle version.
+                </p>
+                <p className="text-blue-600 font-medium mt-2">
+                  Vos données sont conservées lors des mises à jour. Aucune information ne sera perdue.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Button - Only show for company, numbering, and invoice tabs */}
+      {(activeTab === 'company' || activeTab === 'numbering' || activeTab === 'invoice' || activeTab === 'currency' || activeTab === 'security') && (
+        <div className="flex justify-end">
+          <button
+            onClick={saveSettings}
+            disabled={isSaving}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center space-x-2 disabled:opacity-70"
+          >
+            {isSaving ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                <span>Sauvegarde en cours...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-5 h-5 mr-2" />
+                <span>{saveSuccess ? "Paramètres sauvegardés ✓" : "Sauvegarder les paramètres"}</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
