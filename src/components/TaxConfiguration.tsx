@@ -643,7 +643,6 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
           )}
         </div>
       )}
-      </div>
 
       {/* Individual Taxes Tab */}
       {activeTab === 'taxes' && (
