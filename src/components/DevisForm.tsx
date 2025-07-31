@@ -352,8 +352,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     // Aggregate taxes from all product lines
     const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Calculate total TTC as sum of all product TTC
-    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
+    // Calculate total TTC as sum of HT + taxes
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };

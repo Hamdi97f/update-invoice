@@ -315,8 +315,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    // Calculate taxes from settings, not from product TVA
-    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'bonsLivraison');
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
     // Calculate total TTC as sum of HT + taxes
     const totalTTC = totalHT + totalTaxes;

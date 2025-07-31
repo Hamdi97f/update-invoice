@@ -309,8 +309,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Calculate taxes from settings, not from product TVA
-    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'commandesFournisseur');
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
     // Calculate total TTC as sum of HT + taxes
     const totalTTC = totalHT + totalTaxes;
