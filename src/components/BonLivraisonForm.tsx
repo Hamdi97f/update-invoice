@@ -112,8 +112,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   useEffect(() => {
     if (lignes.length > 0 && taxes.length > 0) {
       const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'bonsLivraison', lignes);
-      setTaxCalculations(newTaxCalculations);
+      calculateTaxes(totalHT, taxes, 'bonsLivraison', lignes).then(result => {
+        setTaxCalculations(result.taxes);
+      });
     } else {
       setTaxCalculations([]);
     }
@@ -290,8 +291,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    // Calculate taxes from settings, not from product TVA
-    const { totalTaxes } = calculateTaxes(totalHT, taxes, 'bonsLivraison');
+    // Calculate total taxes from tax calculations
+    const totalTaxes = taxCalculations.reduce((sum, calc) => sum + calc.montant, 0);
     
     // Calculate total TTC as sum of HT + taxes
     const totalTTC = totalHT + totalTaxes;
