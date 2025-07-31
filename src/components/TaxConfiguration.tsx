@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown, Calculator, Settings } from 'lucide-react';
 import { Tax } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +10,10 @@ interface TaxConfigurationProps {
 
 const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) => {
   const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [autoTvaSettings, setAutoTvaSettings] = useState({
+    enabled: false,
+    calculationBase: 'totalHT' as 'totalHT' | 'totalHTWithFirstTax'
+  });
   const [showForm, setShowForm] = useState(false);
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [formData, setFormData] = useState({
@@ -26,6 +30,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
   useEffect(() => {
     if (isReady) {
       loadTaxes();
+      loadAutoTvaSettings();
     }
   }, [isReady]);
 
@@ -68,6 +73,41 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     }
   };
 
+  const loadAutoTvaSettings = async () => {
+    try {
+      if (isElectron) {
+        const result = await query('SELECT value FROM settings WHERE key = ?', ['autoTvaSettings']);
+        if (result.length > 0) {
+          const settings = JSON.parse(result[0].value);
+          setAutoTvaSettings(settings);
+        }
+      } else {
+        const savedSettings = localStorage.getItem('autoTvaSettings');
+        if (savedSettings) {
+          setAutoTvaSettings(JSON.parse(savedSettings));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading auto TVA settings:', error);
+    }
+  };
+
+  const saveAutoTvaSettings = async (settings: typeof autoTvaSettings) => {
+    try {
+      if (isElectron) {
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['autoTvaSettings', JSON.stringify(settings)]
+        );
+      } else {
+        localStorage.setItem('autoTvaSettings', JSON.stringify(settings));
+      }
+      setAutoTvaSettings(settings);
+    } catch (error) {
+      console.error('Error saving auto TVA settings:', error);
+      throw error;
+    }
+  };
   const saveTaxes = async (updatedTaxes: Tax[]) => {
     if (!isElectron) {
       localStorage.setItem('taxes', JSON.stringify(updatedTaxes));
@@ -248,6 +288,116 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
 
   return (
     <div className="space-y-6">
+      {/* Auto TVA Configuration */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <Calculator className="w-6 h-6 text-blue-600 mr-3" />
+            <div>
+              <h3 className="text-lg font-semibold text-blue-900">TVA Automatique</h3>
+              <p className="text-sm text-blue-700">Calcul automatique des lignes TVA dans les documents</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoTvaSettings.enabled}
+                onChange={async (e) => {
+                  const newSettings = { ...autoTvaSettings, enabled: e.target.checked };
+                  try {
+                    await saveAutoTvaSettings(newSettings);
+                  } catch (error) {
+                    alert('Erreur lors de la sauvegarde des paramètres TVA');
+                  }
+                }}
+                className="sr-only"
+              />
+              <div className={`w-11 h-6 rounded-full transition-colors ${
+                autoTvaSettings.enabled ? 'bg-blue-600' : 'bg-gray-300'
+              }`}>
+                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                  autoTvaSettings.enabled ? 'translate-x-5' : 'translate-x-0'
+                } mt-0.5 ml-0.5`}></div>
+              </div>
+              <span className="ml-3 text-sm font-medium text-blue-900">
+                {autoTvaSettings.enabled ? 'Activé' : 'Désactivé'}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {autoTvaSettings.enabled && (
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-lg border border-blue-200">
+              <h4 className="font-medium text-blue-900 mb-3">Configuration du calcul TVA</h4>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-blue-800 mb-2">
+                    Base de calcul TVA :
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="totalHT"
+                        checked={autoTvaSettings.calculationBase === 'totalHT'}
+                        onChange={async (e) => {
+                          const newSettings = { ...autoTvaSettings, calculationBase: e.target.value as 'totalHT' };
+                          try {
+                            await saveAutoTvaSettings(newSettings);
+                          } catch (error) {
+                            alert('Erreur lors de la sauvegarde des paramètres TVA');
+                          }
+                        }}
+                        className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-sm text-blue-800">
+                        Calculer sur le montant HT uniquement
+                      </span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="totalHTWithFirstTax"
+                        checked={autoTvaSettings.calculationBase === 'totalHTWithFirstTax'}
+                        onChange={async (e) => {
+                          const newSettings = { ...autoTvaSettings, calculationBase: e.target.value as 'totalHTWithFirstTax' };
+                          try {
+                            await saveAutoTvaSettings(newSettings);
+                          } catch (error) {
+                            alert('Erreur lors de la sauvegarde des paramètres TVA');
+                          }
+                        }}
+                        className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-sm text-blue-800">
+                        Calculer sur le montant HT + première taxe
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <Calculator className="w-4 h-4 text-blue-600 mr-2 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Comment ça fonctionne :</p>
+                      <ul className="text-xs text-blue-700 mt-1 space-y-1">
+                        <li>• Les lignes TVA sont automatiquement ajoutées selon les taux des produits</li>
+                        <li>• Si plusieurs taux TVA sont présents, une ligne séparée est créée pour chaque taux</li>
+                        <li>• Format : "TVA [taux]%: [montant] TND"</li>
+                        <li>• Apparaît dans la section totaux des documents</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       {/* Header */}
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">Configuration des taxes</h3>
