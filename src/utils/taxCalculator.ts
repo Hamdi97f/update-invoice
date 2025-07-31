@@ -3,7 +3,8 @@ import { Tax, TaxCalculation } from '../types';
 export const calculateTaxes = (
   totalHT: number,
   taxes: Tax[],
-  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur'
+  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur',
+  lignes?: any[] // Add lignes parameter to access product TVA rates
 ): { taxes: TaxCalculation[], totalTaxes: number } => {
   // Filter taxes applicable to this document type and active taxes
   const applicableTaxes = taxes
@@ -14,6 +15,51 @@ export const calculateTaxes = (
   let runningTotal = totalHT;
   let totalTaxes = 0;
 
+  // Step 1: Calculate product TVA rates (group by rate)
+  const productTVAGroups = new Map<number, { base: number, rate: number }>();
+  
+  if (lignes && lignes.length > 0) {
+    lignes.forEach(ligne => {
+      const tvaRate = ligne.produit?.tva || 0;
+      if (tvaRate > 0) {
+        const montantHT = ligne.montantHT || (ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100));
+        
+        if (productTVAGroups.has(tvaRate)) {
+          const existing = productTVAGroups.get(tvaRate)!;
+          existing.base += montantHT;
+        } else {
+          productTVAGroups.set(tvaRate, { base: montantHT, rate: tvaRate });
+        }
+      }
+    });
+  }
+
+  // Step 2: Check which TVA rates are covered by configured taxes
+  const configuredTVARates = new Set<number>();
+  applicableTaxes.forEach(tax => {
+    if (tax.type === 'percentage' && tax.nom.toLowerCase().includes('tva')) {
+      configuredTVARates.add(tax.valeur);
+    }
+  });
+
+  // Step 3: Add product TVA calculations for rates NOT covered by configured taxes
+  productTVAGroups.forEach((group, rate) => {
+    if (!configuredTVARates.has(rate)) {
+      const montant = (group.base * rate) / 100;
+      
+      taxCalculations.push({
+        taxId: `product-tva-${rate}`,
+        nom: `TVA (${rate}%)`,
+        base: group.base,
+        montant
+      });
+      
+      runningTotal += montant;
+      totalTaxes += montant;
+    }
+  });
+
+  // Step 4: Apply configured taxes
   for (const tax of applicableTaxes) {
     let base: number;
     let montant: number;
@@ -25,12 +71,38 @@ export const calculateTaxes = (
     } else {
       // Percentage tax
       if (tax.calculationBase === 'totalHT') {
-        base = totalHT;
+        // For TVA taxes, only apply to products with matching rate
+        if (tax.nom.toLowerCase().includes('tva')) {
+          const matchingGroup = productTVAGroups.get(tax.valeur);
+          if (matchingGroup) {
+            base = matchingGroup.base;
+            montant = (base * tax.valeur) / 100;
+          } else {
+            // No products with this TVA rate, skip this tax
+            continue;
+          }
+        } else {
+          // Non-TVA tax, apply to total HT
+          base = totalHT;
+          montant = (base * tax.valeur) / 100;
+        }
       } else {
         // totalHTWithPreviousTaxes
-        base = runningTotal;
+        if (tax.nom.toLowerCase().includes('tva')) {
+          const matchingGroup = productTVAGroups.get(tax.valeur);
+          if (matchingGroup) {
+            base = matchingGroup.base;
+            montant = (base * tax.valeur) / 100;
+          } else {
+            // No products with this TVA rate, skip this tax
+            continue;
+          }
+        } else {
+          // Non-TVA tax, apply to running total
+          base = runningTotal;
+          montant = (base * tax.valeur) / 100;
+        }
       }
-      montant = (base * tax.valeur) / 100;
     }
 
     taxCalculations.push({

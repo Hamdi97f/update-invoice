@@ -112,7 +112,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   useEffect(() => {
     if (lignes.length > 0 && taxes.length > 0) {
       const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'commandesFournisseur');
+      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'commandesFournisseur', lignes);
       setTaxCalculations(newTaxCalculations);
     } else {
       setTaxCalculations([]);

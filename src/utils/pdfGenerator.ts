@@ -746,6 +746,43 @@ export const generateFacturePDF = async (facture: Facture) => {
             
             // Update totalTTC to include taxes
             facture.totalTTC = facture.totalHT + facture.totalTaxes;
+          } else {
+            // If no configured taxes, calculate product TVA groups
+            const productTVAGroups = new Map<number, { base: number, rate: number }>();
+            
+            facture.lignes.forEach(ligne => {
+              const tvaRate = ligne.produit?.tva || 0;
+              if (tvaRate > 0) {
+                const montantHT = ligne.montantHT;
+                
+                if (productTVAGroups.has(tvaRate)) {
+                  const existing = productTVAGroups.get(tvaRate)!;
+                  existing.base += montantHT;
+                } else {
+                  productTVAGroups.set(tvaRate, { base: montantHT, rate: tvaRate });
+                }
+              }
+            });
+            
+            // Add TVA calculations for each rate
+            facture.taxes = [];
+            facture.totalTaxes = 0;
+            
+            productTVAGroups.forEach((group, rate) => {
+              const montant = (group.base * rate) / 100;
+              
+              facture.taxes.push({
+                taxId: `product-tva-${rate}`,
+                nom: `TVA (${rate}%)`,
+                base: group.base,
+                montant
+              });
+              
+              facture.totalTaxes += montant;
+            });
+            
+            // Update totalTTC to include taxes
+            facture.totalTTC = facture.totalHT + facture.totalTaxes;
           }
         }
       } catch (error) {

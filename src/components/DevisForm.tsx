@@ -112,7 +112,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   useEffect(() => {
     if (lignes.length > 0 && taxes.length > 0) {
       const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'devis');
+      const { taxes: newTaxCalculations, totalTaxes } = calculateTaxes(totalHT, taxes, 'devis', lignes);
       setTaxCalculations(newTaxCalculations);
     } else {
       setTaxCalculations([]);
