@@ -31,18 +31,17 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
   }, [isReady]);
 
   const loadTaxes = async () => {
-    if (!isElectron) {
-      // Ensure table exists first
-      if (isElectron && query) {
+    if (isElectron && query) {
+      try {
         // Ensure table exists with correct schema
         await query(`
           CREATE TABLE IF NOT EXISTS taxes (
             id TEXT PRIMARY KEY,
             nom TEXT NOT NULL,
             type TEXT NOT NULL,
-            valeur REAL NOT NULL,
+            rate REAL,
             amount REAL,
-            calculationBase TEXT NOT NULL,
+            base TEXT NOT NULL,
             applicableDocuments TEXT NOT NULL,
             ordre INTEGER NOT NULL,
             actif BOOLEAN DEFAULT 1
@@ -58,7 +57,12 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
         
         setTaxes(loadedTaxes);
         onTaxesChange?.(loadedTaxes);
-      } else {
+      } catch (error) {
+        console.error('Error loading taxes:', error);
+        setTaxes([]);
+      }
+    } else {
+      try {
         // Web version - use localStorage
         const savedTaxes = localStorage.getItem('taxes');
         if (savedTaxes) {
@@ -66,10 +70,10 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
           setTaxes(loadedTaxes);
           onTaxesChange?.(loadedTaxes);
         }
+      } catch (error) {
+        console.error('Error loading taxes:', error);
+        setTaxes([]);
       }
-    } catch (error) {
-      console.error('Error loading taxes:', error);
-      setTaxes([]);
     }
   };
 
