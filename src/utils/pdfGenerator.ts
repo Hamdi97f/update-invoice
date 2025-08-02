@@ -432,17 +432,6 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
       doc.text(formatCurrency(tax.montant), rightX, currentY, { align: 'right' });
       currentY += settings.spacing.line;
     });
-  } else if (documentData.lignes && documentData.lignes.length > 0) {
-    // Fallback: calculate taxes from product lines
-    const { taxGroups } = aggregateInvoiceTaxes(documentData.lignes);
-    
-    if (Object.keys(taxGroups).length > 0) {
-      Object.entries(taxGroups).forEach(([taxKey, amount]) => {
-        doc.text(`${taxKey}:`, rightX - 50, currentY);
-        doc.text(formatCurrency(amount as number), rightX, currentY, { align: 'right' });
-        currentY += settings.spacing.line;
-      });
-    }
   }
   
   // Total TTC - emphasized
