@@ -37,7 +37,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
   const [taxes, setTaxes] = useState<any[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -118,17 +117,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     recalculerTaxesDevis();
   }, [lignes]);
 
-  const generateNumero = async () => {
-    if (!isReady) return;
-    
-    try {
-      const numero = await getNextDocumentNumber('devis', isElectron, query);
-      setFormData(prev => ({ ...prev, numero }));
-    } catch (error) {
-      console.error('Error generating numero:', error);
-    }
-  };
-
   const loadClients = async () => {
     if (!isReady) return;
     
@@ -186,6 +174,17 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       setTaxes(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
+    }
+  };
+
+  const generateNumero = async () => {
+    if (!isReady) return;
+    
+    try {
+      const numero = await getNextDocumentNumber('devis', isElectron, query);
+      setFormData(prev => ({ ...prev, numero }));
+    } catch (error) {
+      console.error('Error generating numero:', error);
     }
   };
 
@@ -344,25 +343,16 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
-  const aggregateInvoiceTaxes = (lignes: LigneDocument[]) => {
-    const totalTaxes = lignes.reduce((sum, ligne) => {
-      const ligneTaxes = ligne.taxesCalculees?.reduce((taxSum, tax) => taxSum + tax.montant, 0) || 0;
-      return sum + ligneTaxes;
-    }, 0);
-    
-    return { totalTaxes };
-  };
-
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Aggregate taxes from all product lines
-    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    // Agréger les taxes des produits
+    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
     
-    // Calculate total TTC as sum of HT + taxes
-    const totalTTC = totalHT + totalTaxes;
+    // Pour les devis, pas de taxes fixes
+    const totalTTC = totalHT + totalTaxesPercentage;
     
-    return { totalHT, totalTaxes, totalTTC };
+    return { totalHT, totalTaxesPercentage, totalTTC };
   };
 
   const handleSave = async () => {
@@ -373,7 +363,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       return;
     }
 
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
     const devisData: Devis = {
       id: devis?.id || uuidv4(),
@@ -383,21 +373,21 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       client: selectedClient,
       lignes,
       totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
-      taxes: taxCalculations,
-      totalTaxes,
+      taxesPercentage,
+      taxesFixes: [], // Pas de taxes fixes pour les devis
+      totalTaxesPercentage,
+      totalTaxesFixes: 0,
       totalTTC,
       statut: formData.statut,
-      notes: formData.notes,
-      taxesPercentage
+      notes: formData.notes
     };
 
     if (isElectron) {
       try {
         await query(
           `INSERT OR REPLACE INTO devis 
-           (id, numero, date, dateValidite, clientId, totalHT, totalTVA, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, dateValidite, clientId, totalHT, totalTTC, statut, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             devisData.id,
             devisData.numero,
@@ -405,7 +395,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
             devisData.dateValidite.toISOString(),
             devisData.client.id,
             devisData.totalHT,
-            devisData.totalTVA,
             devisData.totalTTC,
             devisData.statut,
             devisData.notes
@@ -849,14 +838,14 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {taxCalculations.length > 0 && (
+                    {taxesPercentage.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
                             <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxesPercentage.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>
