@@ -36,6 +36,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
+  const [taxes, setTaxes] = useState<any[]>([]);
+  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -54,10 +56,22 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
   const { query, isElectron, isReady } = useDatabase();
 
+  const generateNumero = async () => {
+    if (!isReady) return;
+    
+    try {
+      const numero = await getNextDocumentNumber('BL', isElectron, query);
+      setFormData(prev => ({ ...prev, numero }));
+    } catch (error) {
+      console.error('Error generating numero:', error);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && isReady) {
       loadClients();
       loadProduits();
+      loadTaxes();
       
       if (bonLivraison) {
         setFormData({
@@ -170,6 +184,12 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
+      setTaxes(loadedTaxes);
+    } catch (error) {
+      console.error('Error loading taxes:', error);
+    }
+  };
+
   const recalculerTaxesBonLivraison = () => {
     if (lignes.length === 0) {
       setTaxesPercentage([]);
@@ -293,16 +313,26 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
+  const aggregateInvoiceTaxes = (lignes: LigneDocument[]) => {
+    const totalTaxes = lignes.reduce((sum, ligne) => {
+      const montantHT = ligne.quantite * ligne.produit.prixUnitaire;
+      const montantTVA = montantHT * (ligne.produit.tva / 100);
+      return sum + montantTVA;
+    }, 0);
+    
+    return { totalTaxes };
+  };
+
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    // Agréger les taxes des produits
-    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Pour les bons de livraison, pas de taxes fixes
-    const totalTTC = totalHT + totalTaxesPercentage;
+    // Calculate total TTC as sum of HT + taxes
+    const totalTTC = totalHT + totalTaxes;
     
-    return { totalHT, totalTaxesPercentage, totalTTC };
+    return { totalHT, totalTaxes, totalTTC };
   };
 
   const handleSave = async () => {
@@ -313,7 +343,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       return;
     }
 
-    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+    // Calculate totals for display purposes
+    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
     const bonLivraisonData: BonLivraison = {
       id: bonLivraison?.id || uuidv4(),
@@ -325,19 +356,18 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       factureId: formData.factureId || undefined,
       notes: formData.notes,
       totalHT,
-      taxesPercentage,
-      taxesFixes: [],
-      totalTaxesPercentage,
-      totalTaxesFixes: 0,
+      totalTVA: 0, // Set to 0 as we're not using product TVA
       totalTTC,
+      taxes: taxCalculations,
+      totalTaxes
     };
 
     if (isElectron) {
       try {
         await query(
           `INSERT OR REPLACE INTO bons_livraison 
-           (id, numero, date, clientId, statut, factureId, notes, totalHT, totalTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, clientId, statut, factureId, notes, totalHT, totalTVA, totalTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             bonLivraisonData.id,
             bonLivraisonData.numero,
@@ -347,6 +377,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
             bonLivraisonData.factureId || null,
             bonLivraisonData.notes,
             bonLivraisonData.totalHT,
+            bonLivraisonData.totalTVA,
             bonLivraisonData.totalTTC
           ]
         );
@@ -408,7 +439,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -768,25 +799,24 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {taxesPercentage.length > 0 && (
+                    {/* Tax calculations */}
+                    {taxCalculations.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par produit:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {taxesPercentage.map((taxe, index) => (
+                          {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {taxe.nom} {taxe.taux ? `${taxe.taux}%` : ''}:
-                              </span>
-                              <span>{formatCurrency(taxe.montant)}</span>
+                              <span className="text-gray-600">{calc.nom}:</span>
+                              <span>{formatCurrency(calc.montant)}</span>
                             </div>
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxesPercentage)}</span>
+                          <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                       </>
                     )}
