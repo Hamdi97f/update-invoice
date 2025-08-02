@@ -163,14 +163,3 @@ export const formatAggregatedTaxes = (summary: InvoiceTaxSummary): any[] => {
 };
 
 // Legacy function for backward compatibility - now uses new system
-export const calculateProductTaxes = (
-  montantHT: number,
-  productTaxRate: number,
-  globalTaxes: any[],
-  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur'
-): ProductTaxResult => {
-  // Convert global taxes to product taxes using the product's specific rate
-  const productTaxes = convertGlobalTaxesToProductTaxes(globalTaxes, productTaxRate, documentType);
-  
-  return calculateProductTaxes(montantHT, productTaxes, documentType);
-};
