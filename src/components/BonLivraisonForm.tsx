@@ -368,7 +368,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
           bonLivraisonData.factureId || null,
           bonLivraisonData.notes || '',
           bonLivraisonData.totalHT,
-          0, // totalTVA
+          bonLivraisonData.totalTaxesPercentage || 0,
           bonLivraisonData.totalTTC
         ]
       );

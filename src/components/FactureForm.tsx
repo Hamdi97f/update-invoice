@@ -524,8 +524,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
       // Save facture to database
       await query(
         `INSERT OR REPLACE INTO factures 
-         (id, numero, date, dateEcheance, clientId, totalHT, totalTTC, statut, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           factureData.id,
           factureData.numero,
@@ -533,6 +533,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
           factureData.dateEcheance.toISOString(),
           factureData.client.id,
           factureData.totalHT,
+          factureData.totalTaxesPercentage + factureData.totalTaxesFixes,
           factureData.totalTTC,
           factureData.statut,
           factureData.notes || ''
