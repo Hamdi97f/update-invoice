@@ -671,7 +671,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                                 <Store className="w-4 h-4 text-green-600" />
                                 <div>
                                   <div className="font-medium text-gray-900 group-hover:text-green-700">
-                                    <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
+                                    {produit.ref && (
                                       <span className="text-xs text-gray-500 mr-2">[{produit.ref}]</span>
                                     )}
                                     {produit.nom}
