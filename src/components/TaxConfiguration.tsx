@@ -328,10 +328,10 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                     {tax.nom}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {tax.type === 'percentage' ? 'Pourcentage' : 'Montant fixe'}
+                    {tax.rateType === 'percentage' ? 'Pourcentage' : 'Montant fixe'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {tax.type === 'percentage' ? `${tax.valeur}%` : `${tax.valeur.toFixed(3)} TND`}
+                    {tax.rateType === 'percentage' ? `${tax.valeur}%` : `${tax.valeur.toFixed(3)} TND`}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {tax.calculationBase === 'totalHT' ? 'Total HT' : 'Total HT + taxes précédentes'}
@@ -448,7 +448,6 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                         required
                       />
                       <span className="absolute right-3 top-2 text-gray-500 text-sm">
-                        {formData.type === 'percentage' ? '%' : 'TND'}
                         {formData.rateType === 'percentage' ? '%' : 'TND'}
                       </span>
                     </div>
