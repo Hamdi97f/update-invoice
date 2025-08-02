@@ -328,73 +328,74 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       return;
     }
 
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    try {
+      const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
-    const commandeData: CommandeFournisseur = {
-      id: commande?.id || uuidv4(),
-      numero: formData.numero,
-      date: new Date(formData.date),
-      dateReception: new Date(formData.dateReception),
-      fournisseur: selectedFournisseur,
-      lignes,
-      totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
-      taxes: taxCalculations,
-      totalTaxes,
-      totalTTC,
-      statut: formData.statut,
-      notes: formData.notes,
-      taxesPercentage
-    };
+      const commandeData: CommandeFournisseur = {
+        id: commande?.id || uuidv4(),
+        numero: formData.numero,
+        date: new Date(formData.date),
+        dateReception: new Date(formData.dateReception),
+        fournisseur: selectedFournisseur,
+        lignes,
+        totalHT,
+        taxesPercentage,
+        taxesFixes: [],
+        totalTaxesPercentage,
+        totalTaxesFixes: 0,
+        totalTTC,
+        statut: formData.statut,
+        notes: formData.notes
+      };
 
-    if (isElectron) {
-      try {
+      // Save commande to database
+      await query(
+        `INSERT OR REPLACE INTO commandes_fournisseur 
+         (id, numero, date, dateReception, fournisseurId, totalHT, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          commandeData.id,
+          commandeData.numero,
+          commandeData.date.toISOString(),
+          commandeData.dateReception.toISOString(),
+          commandeData.fournisseur.id,
+          commandeData.totalHT,
+          0, // totalTVA
+          commandeData.totalTTC,
+          commandeData.statut,
+          commandeData.notes || ''
+        ]
+      );
+
+      // Delete existing lines
+      await query('DELETE FROM lignes_commande_fournisseur WHERE commandeId = ?', [commandeData.id]);
+
+      // Save lines
+      for (const ligne of lignes) {
         await query(
-          `INSERT OR REPLACE INTO commandes_fournisseur 
-           (id, numero, date, dateReception, fournisseurId, totalHT, totalTVA, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO lignes_commande_fournisseur 
+           (id, commandeId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
+            ligne.id,
             commandeData.id,
-            commandeData.numero,
-            commandeData.date.toISOString(),
-            commandeData.dateReception.toISOString(),
-            commandeData.fournisseur.id,
-            commandeData.totalHT,
-            commandeData.totalTVA,
-            commandeData.totalTTC,
-            commandeData.statut,
-            commandeData.notes
+            ligne.produit.id,
+            ligne.quantite,
+            ligne.prixUnitaire,
+            ligne.remise || 0,
+            ligne.montantHT,
+            ligne.montantTTC
           ]
         );
-
-        await query('DELETE FROM lignes_commande_fournisseur WHERE commandeId = ?', [commandeData.id]);
-
-        for (const ligne of lignes) {
-          await query(
-            `INSERT INTO lignes_commande_fournisseur 
-             (id, commandeId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              ligne.id,
-              commandeData.id,
-              ligne.produit.id,
-              ligne.quantite,
-              ligne.prixUnitaire,
-              ligne.remise,
-              ligne.montantHT,
-              ligne.montantTTC
-            ]
-          );
-        }
-      } catch (error) {
-        console.error('Error saving commande:', error);
-        alert('Erreur lors de la sauvegarde');
-        return;
       }
-    }
 
-    onSave(commandeData);
-    onClose();
+      onSave(commandeData);
+      onClose();
+      
+    } catch (error) {
+      console.error('Error saving commande:', error);
+      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+    }
   };
 
   // FIXED: Fournisseur save handler

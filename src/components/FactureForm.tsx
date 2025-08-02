@@ -501,83 +501,81 @@ const FactureForm: React.FC<FactureFormProps> = ({
       return;
     }
 
-    const { totalHT, totalTaxesPercentage, totalTaxesFixes, totalTTC } = calculateTotals();
+    try {
+      const { totalHT, totalTaxesPercentage, totalTaxesFixes, totalTTC } = calculateTotals();
 
-    const factureData: Facture = {
-      id: facture?.id || uuidv4(),
-      numero: formData.numero,
-      date: new Date(formData.date),
-      dateEcheance: new Date(formData.dateEcheance),
-      client: selectedClient,
-      lignes,
-      totalHT,
-      taxesPercentage,
-      taxesFixes,
-      totalTaxesPercentage,
-      totalTaxesFixes,
-      totalTTC,
-      statut: formData.statut,
-      notes: formData.notes
-    };
+      const factureData: Facture = {
+        id: facture?.id || uuidv4(),
+        numero: formData.numero,
+        date: new Date(formData.date),
+        dateEcheance: new Date(formData.dateEcheance),
+        client: selectedClient,
+        lignes,
+        totalHT,
+        taxesPercentage,
+        taxesFixes,
+        totalTaxesPercentage,
+        totalTaxesFixes,
+        totalTTC,
+        statut: formData.statut,
+        notes: formData.notes
+      };
 
-    if (isElectron) {
-      try {
-        // Save facture
+      // Save facture to database
+      await query(
+        `INSERT OR REPLACE INTO factures 
+         (id, numero, date, dateEcheance, clientId, totalHT, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          factureData.id,
+          factureData.numero,
+          factureData.date.toISOString(),
+          factureData.dateEcheance.toISOString(),
+          factureData.client.id,
+          factureData.totalHT,
+          factureData.totalTTC,
+          factureData.statut,
+          factureData.notes || ''
+        ]
+      );
+
+      // Delete existing lines
+      await query('DELETE FROM lignes_facture WHERE factureId = ?', [factureData.id]);
+
+      // Save lines
+      for (const ligne of lignes) {
         await query(
-          `INSERT OR REPLACE INTO factures 
-           (id, numero, date, dateEcheance, clientId, totalHT, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO lignes_facture 
+           (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
+            ligne.id,
             factureData.id,
-            factureData.numero,
-            factureData.date.toISOString(),
-            factureData.dateEcheance.toISOString(),
-            factureData.client.id,
-            factureData.totalHT,
-            factureData.totalTTC,
-            factureData.statut,
-            factureData.notes
+            ligne.produit.id,
+            ligne.quantite,
+            ligne.prixUnitaire,
+            ligne.remise || 0,
+            ligne.montantHT,
+            ligne.montantTTC
           ]
         );
-
-        // Delete existing lines
-        await query('DELETE FROM lignes_facture WHERE factureId = ?', [factureData.id]);
-
-        // Save lines
-        for (const ligne of lignes) {
-          await query(
-            `INSERT INTO lignes_facture 
-             (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              ligne.id,
-              factureData.id,
-              ligne.produit.id,
-              ligne.quantite,
-              ligne.prixUnitaire,
-              ligne.remise,
-              ligne.montantHT,
-              ligne.montantTTC
-            ]
-          );
-        }
-        
-        // If this is an avoir, update the original invoice status to 'annulee'
-        if (isAvoir && originalFacture) {
-          await query(
-            'UPDATE factures SET statut = ? WHERE id = ?',
-            ['annulee', originalFacture.id]
-          );
-        }
-      } catch (error) {
-        console.error('Error saving facture:', error);
-        alert('Erreur lors de la sauvegarde');
-        return;
       }
-    }
+      
+      // If this is an avoir, update the original invoice status to 'annulee'
+      if (isAvoir && originalFacture) {
+        await query(
+          'UPDATE factures SET statut = ? WHERE id = ?',
+          ['annulee', originalFacture.id]
+        );
+      }
 
-    onSave(factureData);
-    onClose();
+      onSave(factureData);
+      onClose();
+      
+    } catch (error) {
+      console.error('Error saving facture:', error);
+      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+    }
   };
 
   const handleClientSave = (client: Client) => {

@@ -363,72 +363,73 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       return;
     }
 
-    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+    try {
+      const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
-    const devisData: Devis = {
-      id: devis?.id || uuidv4(),
-      numero: formData.numero,
-      date: new Date(formData.date),
-      dateValidite: new Date(formData.dateValidite),
-      client: selectedClient,
-      lignes,
-      totalHT,
-      taxesPercentage,
-      taxesFixes: [], // Pas de taxes fixes pour les devis
-      totalTaxesPercentage,
-      totalTaxesFixes: 0,
-      totalTTC,
-      statut: formData.statut,
-      notes: formData.notes
-    };
+      const devisData: Devis = {
+        id: devis?.id || uuidv4(),
+        numero: formData.numero,
+        date: new Date(formData.date),
+        dateValidite: new Date(formData.dateValidite),
+        client: selectedClient,
+        lignes,
+        totalHT,
+        taxesPercentage,
+        taxesFixes: [], // Pas de taxes fixes pour les devis
+        totalTaxesPercentage,
+        totalTaxesFixes: 0,
+        totalTTC,
+        statut: formData.statut,
+        notes: formData.notes
+      };
 
-    if (isElectron) {
-      try {
+      // Save devis to database
+      await query(
+        `INSERT OR REPLACE INTO devis 
+         (id, numero, date, dateValidite, clientId, totalHT, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          devisData.id,
+          devisData.numero,
+          devisData.date.toISOString(),
+          devisData.dateValidite.toISOString(),
+          devisData.client.id,
+          devisData.totalHT,
+          devisData.totalTTC,
+          devisData.statut,
+          devisData.notes || ''
+        ]
+      );
+
+      // Delete existing lines
+      await query('DELETE FROM lignes_devis WHERE devisId = ?', [devisData.id]);
+
+      // Save lines
+      for (const ligne of lignes) {
         await query(
-          `INSERT OR REPLACE INTO devis 
-           (id, numero, date, dateValidite, clientId, totalHT, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO lignes_devis 
+           (id, devisId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
+            ligne.id,
             devisData.id,
-            devisData.numero,
-            devisData.date.toISOString(),
-            devisData.dateValidite.toISOString(),
-            devisData.client.id,
-            devisData.totalHT,
-            devisData.totalTTC,
-            devisData.statut,
-            devisData.notes
+            ligne.produit.id,
+            ligne.quantite,
+            ligne.prixUnitaire,
+            ligne.remise || 0,
+            ligne.montantHT,
+            ligne.montantTTC
           ]
         );
-
-        await query('DELETE FROM lignes_devis WHERE devisId = ?', [devisData.id]);
-
-        for (const ligne of lignes) {
-          await query(
-            `INSERT INTO lignes_devis 
-             (id, devisId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              ligne.id,
-              devisData.id,
-              ligne.produit.id,
-              ligne.quantite,
-              ligne.prixUnitaire,
-              ligne.remise,
-              ligne.montantHT,
-              ligne.montantTTC
-            ]
-          );
-        }
-      } catch (error) {
-        console.error('Error saving devis:', error);
-        alert('Erreur lors de la sauvegarde');
-        return;
       }
-    }
 
-    onSave(devisData);
-    onClose();
+      onSave(devisData);
+      onClose();
+      
+    } catch (error) {
+      console.error('Error saving devis:', error);
+      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+    }
   };
 
   const handleClientSave = (client: Client) => {

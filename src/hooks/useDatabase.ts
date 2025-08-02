@@ -70,10 +70,18 @@ export function useDatabase() {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       
-      const result = await window.electronAPI.dbQuery(sql, params);
+      // Validate parameters to prevent null/undefined issues
+      const validatedParams = params.map(param => {
+        if (param === null || param === undefined) {
+          return null;
+        }
+        return param;
+      });
+      
+      const result = await window.electronAPI.dbQuery(sql, validatedParams);
       return result;
     } catch (error) {
-      console.error('Database query error:', error);
+      console.error('Database query error:', error, 'SQL:', sql, 'Params:', params);
       throw error;
     } finally {
       setPendingQueries(prev => Math.max(0, prev - 1));

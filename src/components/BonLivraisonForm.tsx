@@ -333,69 +333,71 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       return;
     }
 
-    // Calculate totals for display purposes
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    try {
+      // Calculate totals for display purposes
+      const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
-    const bonLivraisonData: BonLivraison = {
-      id: bonLivraison?.id || uuidv4(),
-      numero: formData.numero,
-      date: new Date(formData.date),
-      client: selectedClient,
-      lignes,
-      statut: formData.statut,
-      factureId: formData.factureId || undefined,
-      notes: formData.notes,
-      totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
-      totalTTC,
-      taxes: taxCalculations,
-      totalTaxes
-    };
+      const bonLivraisonData: BonLivraison = {
+        id: bonLivraison?.id || uuidv4(),
+        numero: formData.numero,
+        date: new Date(formData.date),
+        client: selectedClient,
+        lignes,
+        statut: formData.statut,
+        factureId: formData.factureId || undefined,
+        notes: formData.notes,
+        totalHT,
+        taxesPercentage,
+        taxesFixes: [],
+        totalTaxesPercentage,
+        totalTaxesFixes: 0,
+        totalTTC
+      };
 
-    if (isElectron) {
-      try {
+      // Save bon de livraison to database
+      await query(
+        `INSERT OR REPLACE INTO bons_livraison 
+         (id, numero, date, clientId, statut, factureId, notes, totalHT, totalTVA, totalTTC)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bonLivraisonData.id,
+          bonLivraisonData.numero,
+          bonLivraisonData.date.toISOString(),
+          bonLivraisonData.client.id,
+          bonLivraisonData.statut,
+          bonLivraisonData.factureId || null,
+          bonLivraisonData.notes || '',
+          bonLivraisonData.totalHT,
+          0, // totalTVA
+          bonLivraisonData.totalTTC
+        ]
+      );
+
+      // Delete existing lines
+      await query('DELETE FROM lignes_bon_livraison WHERE bonLivraisonId = ?', [bonLivraisonData.id]);
+
+      // Save lines
+      for (const ligne of lignes) {
         await query(
-          `INSERT OR REPLACE INTO bons_livraison 
-           (id, numero, date, clientId, statut, factureId, notes, totalHT, totalTVA, totalTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO lignes_bon_livraison 
+           (id, bonLivraisonId, produitId, quantite)
+           VALUES (?, ?, ?, ?)`,
           [
+            ligne.id,
             bonLivraisonData.id,
-            bonLivraisonData.numero,
-            bonLivraisonData.date.toISOString(),
-            bonLivraisonData.client.id,
-            bonLivraisonData.statut,
-            bonLivraisonData.factureId || null,
-            bonLivraisonData.notes,
-            bonLivraisonData.totalHT,
-            bonLivraisonData.totalTVA,
-            bonLivraisonData.totalTTC
+            ligne.produit.id,
+            ligne.quantite
           ]
         );
-
-        await query('DELETE FROM lignes_bon_livraison WHERE bonLivraisonId = ?', [bonLivraisonData.id]);
-
-        for (const ligne of lignes) {
-          await query(
-            `INSERT INTO lignes_bon_livraison 
-             (id, bonLivraisonId, produitId, quantite)
-             VALUES (?, ?, ?, ?)`,
-            [
-              ligne.id,
-              bonLivraisonData.id,
-              ligne.produit.id,
-              ligne.quantite
-            ]
-          );
-        }
-      } catch (error) {
-        console.error('Error saving bon de livraison:', error);
-        alert('Erreur lors de la sauvegarde');
-        return;
       }
-    }
 
-    onSave(bonLivraisonData);
-    onClose();
+      onSave(bonLivraisonData);
+      onClose();
+      
+    } catch (error) {
+      console.error('Error saving bon de livraison:', error);
+      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+    }
   };
 
   const handleClientSave = (client: Client) => {
