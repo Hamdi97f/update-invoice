@@ -3,14 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Search, Truck, Store, Calculator 
 import { Client, Produit, LigneDocument, BonLivraison, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { 
-  calculateProductTaxes, 
-  aggregateInvoiceTaxes, 
-  formatTaxSummaryForDisplay, 
-  getDefaultProductTaxes,
-  calculateInvoiceTotalTTC,
-  calculateInvoiceTotalHT
-} from '../utils/productTaxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatTaxSummaryForDisplay, getDefaultProductTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -39,7 +32,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [invoiceTaxSummary, setInvoiceTaxSummary] = useState<any[]>([]);
-  const [appliedFixedTaxes, setAppliedFixedTaxes] = useState<Set<string>>(new Set());
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -204,7 +196,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const recalculateInvoiceTaxes = () => {
-    const newAppliedFixedTaxes = new Set<string>();
+    const appliedFixedTaxes = new Set<string>();
     
     // Calculate taxes for each product line
     const updatedLignes = lignes.map(ligne => {
@@ -217,7 +209,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         : defaultTaxes;
       
       // Calculate taxes for this product
-      const taxResult = calculateProductTaxes(ligne.montantHT, productTaxes, newAppliedFixedTaxes);
+      const taxResult = calculateProductTaxes(ligne.montantHT, productTaxes, appliedFixedTaxes);
 
       return {
         ...ligne,
@@ -228,7 +220,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     });
 
     setLignes(updatedLignes);
-    setAppliedFixedTaxes(newAppliedFixedTaxes);
 
     // Aggregate taxes from all product lines
     const { taxGroups, fixedTaxes } = aggregateInvoiceTaxes(updatedLignes, taxes);
@@ -276,14 +267,11 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       const ligne = newLignes[existingLineIndex];
       const montantHT = ligne.quantite * produit.prixUnitaire;
       ligne.montantHT = montantHT;
-      ligne.montantTTC = calculateTTC(montantHT, produit.tva);
       
       setLignes(newLignes);
     } else {
       // For bon de livraison, include prices for display
       const montantHT = produit.prixUnitaire;
-      const defaultTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', produit.tva);
-      const taxResult = calculateProductTaxes(montantHT, defaultTaxes);
       
       const newLigne: LigneDocument = {
         id: uuidv4(),
@@ -292,8 +280,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT: montantHT,
-        montantTTC: montantHT, // Will be recalculated by tax system
-        productTaxes: taxResult.productTaxes,
+        montantTTC: montantHT,
+        productTaxes: getDefaultProductTaxes(taxes, 'bonsLivraison', produit.tva),
         taxCalculations: []
       };
       setLignes([...lignes, newLigne]);
@@ -329,8 +317,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const calculateTotals = () => {
-    const totalHT = calculateInvoiceTotalHT(lignes);
-    const totalTTC = calculateInvoiceTotalTTC(lignes);
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     const totalTaxes = totalTTC - totalHT;
     
     return { totalHT, totalTaxes, totalTTC };

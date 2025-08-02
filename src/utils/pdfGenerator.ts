@@ -714,7 +714,7 @@ export const generateFacturePDF = async (facture: Facture) => {
           
           facture.lignes = facture.lignes.map(ligne => {
             const defaultTaxes = getDefaultProductTaxes(taxes, 'factures', ligne.produit.tva);
-            const taxResult = calcProdTaxes(ligne.montantHT, defaultTaxes);
+            const taxResult = calcProdTaxes(ligne.montantHT, defaultTaxes, new Set());
             
             return {
               ...ligne,
@@ -725,15 +725,23 @@ export const generateFacturePDF = async (facture: Facture) => {
           });
           
           // Aggregate taxes from all product lines
-          const { taxGroups, totalTaxes } = aggregateInvoiceTaxes(facture.lignes);
+          const { taxGroups, fixedTaxes, totalTaxes } = aggregateInvoiceTaxes(facture.lignes, taxes);
           facture.totalTaxes = totalTaxes;
           facture.totalTTC = facture.totalHT + totalTaxes;
           
           // Format for display
-          facture.taxes = Object.entries(taxGroups).map(([taxKey, amount]) => ({
-            nom: taxKey,
-            montant: amount
-          }));
+          facture.taxes = [
+            ...Object.entries(taxGroups).map(([taxKey, amount]) => ({
+              nom: taxKey,
+              montant: amount,
+              type: 'percentage'
+            })),
+            ...Object.entries(fixedTaxes).map(([taxKey, amount]) => ({
+              nom: taxKey,
+              montant: amount,
+              type: 'fixed'
+            }))
+          ];
         }
       } catch (error) {
         console.error('Error loading and calculating taxes for facture:', error);
@@ -814,7 +822,7 @@ export const generateDevisPDF = async (devis: Devis) => {
           
           devis.lignes = devis.lignes.map(ligne => {
             const defaultTaxes = getDefaultProductTaxes(taxes, 'devis', ligne.produit.tva);
-            const taxResult = calcProdTaxes(ligne.montantHT, defaultTaxes);
+            const taxResult = calcProdTaxes(ligne.montantHT, defaultTaxes, new Set());
             
             return {
               ...ligne,
@@ -825,15 +833,23 @@ export const generateDevisPDF = async (devis: Devis) => {
           });
           
           // Aggregate taxes from all product lines
-          const { taxGroups, totalTaxes } = aggregateInvoiceTaxes(devis.lignes);
+          const { taxGroups, fixedTaxes, totalTaxes } = aggregateInvoiceTaxes(devis.lignes, taxes);
           devis.totalTaxes = totalTaxes;
           devis.totalTTC = devis.totalHT + totalTaxes;
           
           // Format for display
-          devis.taxes = Object.entries(taxGroups).map(([taxKey, amount]) => ({
-            nom: taxKey,
-            montant: amount
-          }));
+          devis.taxes = [
+            ...Object.entries(taxGroups).map(([taxKey, amount]) => ({
+              nom: taxKey,
+              montant: amount,
+              type: 'percentage'
+            })),
+            ...Object.entries(fixedTaxes).map(([taxKey, amount]) => ({
+              nom: taxKey,
+              montant: amount,
+              type: 'fixed'
+            }))
+          ];
         }
       } catch (error) {
         console.error('Error loading and calculating taxes for devis:', error);

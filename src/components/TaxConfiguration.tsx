@@ -14,8 +14,9 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [formData, setFormData] = useState({
     nom: '',
-    type: 'percentage' as 'percentage' | 'fixed',
+    type: 'percentage' as const,
     valeur: 0,
+    amount: 0,
     calculationBase: 'totalHT' as 'totalHT' | 'totalHTWithPreviousTaxes',
     applicableDocuments: [] as ('factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur')[],
     actif: true
@@ -31,89 +32,86 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
 
   const loadTaxes = async () => {
     if (!isElectron) {
-      const savedTaxes = localStorage.getItem('taxes');
-      if (savedTaxes) {
-        const loadedTaxes = JSON.parse(savedTaxes);
+      // Ensure table exists first
+      if (isElectron && query) {
+        // Ensure table exists with correct schema
+        await query(`
+          CREATE TABLE IF NOT EXISTS taxes (
+            id TEXT PRIMARY KEY,
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL,
+            valeur REAL NOT NULL,
+            amount REAL,
+            calculationBase TEXT NOT NULL,
+            applicableDocuments TEXT NOT NULL,
+            ordre INTEGER NOT NULL,
+            actif BOOLEAN DEFAULT 1
+          )
+        `);
+
+        const result = await query('SELECT * FROM taxes ORDER BY ordre ASC');
+        const loadedTaxes = result.map((tax: any) => ({
+          ...tax,
+          applicableDocuments: JSON.parse(tax.applicableDocuments),
+          actif: Boolean(tax.actif)
+        }));
+        
         setTaxes(loadedTaxes);
         onTaxesChange?.(loadedTaxes);
+      } else {
+        // Web version - use localStorage
+        const savedTaxes = localStorage.getItem('taxes');
+        if (savedTaxes) {
+          const loadedTaxes = JSON.parse(savedTaxes);
+          setTaxes(loadedTaxes);
+          onTaxesChange?.(loadedTaxes);
+        }
       }
-      return;
-    }
-
-    try {
-      // Ensure table exists first
-      await query(`
-        CREATE TABLE IF NOT EXISTS taxes (
-          id TEXT PRIMARY KEY,
-          nom TEXT NOT NULL,
-          type TEXT NOT NULL,
-          valeur REAL NOT NULL,
-          calculationBase TEXT NOT NULL,
-          applicableDocuments TEXT NOT NULL,
-          ordre INTEGER NOT NULL,
-          actif BOOLEAN DEFAULT 1
-        )
-      `);
-
-      const result = await query('SELECT * FROM taxes ORDER BY ordre ASC');
-      const loadedTaxes = result.map((tax: any) => ({
-        ...tax,
-        rateType: tax.type, // Map database 'type' field to 'rateType'
-        applicableDocuments: JSON.parse(tax.applicableDocuments),
-        actif: Boolean(tax.actif)
-      }));
-      
-      setTaxes(loadedTaxes);
-      onTaxesChange?.(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
-      // Initialize with empty array if loading fails
       setTaxes([]);
     }
   };
 
   const saveTaxes = async (updatedTaxes: Tax[]) => {
-    if (!isElectron) {
-      localStorage.setItem('taxes', JSON.stringify(updatedTaxes));
-      return;
-    }
-
     try {
-      // First ensure the table exists with correct schema
-      await query(`
-        CREATE TABLE IF NOT EXISTS taxes (
-          id TEXT PRIMARY KEY,
-          nom TEXT NOT NULL,
-          type TEXT NOT NULL,
-          valeur REAL NOT NULL,
-          calculationBase TEXT NOT NULL,
-          applicableDocuments TEXT NOT NULL,
-          ordre INTEGER NOT NULL,
-          actif BOOLEAN DEFAULT 1
-        )
-      `);
+      if (isElectron && query) {
+        // Ensure table exists with correct schema
+        await query(`
+          CREATE TABLE IF NOT EXISTS taxes (
+            id TEXT PRIMARY KEY,
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL,
+            valeur REAL NOT NULL,
+            amount REAL,
+            calculationBase TEXT NOT NULL,
+            applicableDocuments TEXT NOT NULL,
+            ordre INTEGER NOT NULL,
+            actif BOOLEAN DEFAULT 1
+          )
+        `);
 
-      // Save each tax individually
-      for (const tax of updatedTaxes) {
-        try {
+        // Save each tax individually
+        for (const tax of updatedTaxes) {
           await query(
-            `INSERT OR REPLACE INTO taxes (id, nom, type, valeur, calculationBase, applicableDocuments, ordre, actif)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT OR REPLACE INTO taxes (id, nom, type, valeur, amount, calculationBase, applicableDocuments, ordre, actif)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               tax.id,
               tax.nom,
-              tax.rateType, // Map rateType to type for database
+              tax.type,
               tax.valeur,
+              tax.amount || null,
               tax.calculationBase,
               JSON.stringify(tax.applicableDocuments),
               tax.ordre,
               tax.actif ? 1 : 0
             ]
           );
-        } catch (taxError) {
-          console.error('Error saving individual tax:', taxError, tax);
-          throw new Error(`Erreur lors de la sauvegarde de la taxe "${tax.nom}": ${taxError.message}`);
         }
+      } else {
+        // Web version - use localStorage
+        localStorage.setItem('taxes', JSON.stringify(updatedTaxes));
       }
     } catch (error) {
       console.error('Error saving taxes:', error);
@@ -129,8 +127,13 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
       return;
     }
 
-    if (formData.valeur <= 0) {
-      alert('La valeur de la taxe doit être supérieure à 0');
+    if (formData.type === 'percentage' && formData.valeur <= 0) {
+      alert('Le taux de la taxe doit être supérieur à 0');
+      return;
+    }
+
+    if (formData.type === 'fixed' && formData.amount <= 0) {
+      alert('Le montant de la taxe doit être supérieur à 0');
       return;
     }
 
@@ -142,8 +145,9 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     const taxData: Tax = {
       id: editingTax?.id || uuidv4(),
       nom: formData.nom.trim(),
-      rateType: formData.type, // Use rateType consistently
+      type: formData.type,
       valeur: formData.valeur,
+      amount: formData.type === 'fixed' ? formData.amount : undefined,
       calculationBase: formData.calculationBase,
       applicableDocuments: formData.applicableDocuments,
       ordre: editingTax?.ordre || taxes.length + 1,
@@ -166,11 +170,10 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
       setEditingTax(null);
       resetForm();
       
-      // Show success message
       alert('Taxe sauvegardée avec succès');
     } catch (error) {
       console.error('Error saving tax:', error);
-      alert(`Erreur lors de la sauvegarde de la taxe: ${error.message || 'Erreur inconnue'}`);
+      alert('Erreur lors de la sauvegarde de la taxe');
     }
   };
 
@@ -178,8 +181,9 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     setEditingTax(tax);
     setFormData({
       nom: tax.nom,
-      type: tax.rateType, // Map rateType back to type for form
+      type: tax.type,
       valeur: tax.valeur,
+      amount: tax.amount || 0,
       calculationBase: tax.calculationBase,
       applicableDocuments: tax.applicableDocuments,
       actif: tax.actif
@@ -248,6 +252,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
       nom: '',
       type: 'percentage',
       valeur: 0,
+      amount: 0,
       calculationBase: 'totalHT',
       applicableDocuments: [],
       actif: true
@@ -352,10 +357,10 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                     {tax.nom}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {tax.rateType === 'percentage' ? 'Pourcentage' : 'Montant fixe'}
+                    {tax.type === 'percentage' ? 'Pourcentage' : 'Montant fixe'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {tax.rateType === 'percentage' ? `${tax.valeur}%` : `${tax.valeur.toFixed(3)} TND`}
+                    {tax.type === 'percentage' ? `${tax.valeur}%` : `${(tax.amount || tax.valeur).toFixed(3)} TND`}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {tax.calculationBase === 'totalHT' ? 'Total HT' : 'Total HT + taxes précédentes'}
@@ -459,22 +464,30 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Valeur *
+                      {formData.type === 'percentage' ? 'Taux (%)' : 'Montant (TND)'} *
                     </label>
-                    <div className="relative">
+                    {formData.type === 'percentage' ? (
                       <input
                         type="number"
                         value={formData.valeur}
                         onChange={(e) => setFormData(prev => ({ ...prev, valeur: parseFloat(e.target.value) || 0 }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        required
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        value={formData.amount}
+                        onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         step="0.001"
                         min="0"
                         required
                       />
-                      <span className="absolute right-3 top-2 text-gray-500 text-sm">
-                        {formData.type === 'percentage' ? '%' : 'TND'}
-                      </span>
-                    </div>
+                    )}
                   </div>
                 </div>
 

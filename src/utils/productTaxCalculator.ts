@@ -1,8 +1,8 @@
-import { ProductTaxEntry, LigneDocument, ProductTaxCalculation, Tax } from '../types';
+import { ProductTax, LigneDocument, TaxCalculationResult, Tax } from '../types';
 
 export interface ProductTaxCalculationResult {
-  productTaxes: ProductTaxEntry[];
-  taxCalculations: ProductTaxCalculation[];
+  productTaxes: ProductTax[];
+  taxCalculations: TaxCalculationResult[];
   totalTaxes: number;
   totalTTC: number;
 }
@@ -16,26 +16,26 @@ export interface InvoiceTaxSummary {
 // Calculate taxes for a single product using cascade logic
 export const calculateProductTaxes = (
   montantHT: number,
-  productTaxes: ProductTaxEntry[],
+  productTaxes: ProductTax[],
   appliedFixedTaxes: Set<string> = new Set() // Track fixed taxes already applied at invoice level
 ): ProductTaxCalculationResult => {
   // Sort taxes by order for cascade calculation
   const sortedTaxes = [...productTaxes].sort((a, b) => a.order - b.order);
   
-  const taxCalculations: ProductTaxCalculation[] = [];
+  const taxCalculations: TaxCalculationResult[] = [];
   let runningTotal = montantHT;
   let totalTaxes = 0;
 
   for (const tax of sortedTaxes) {
     let calculatedAmount = 0;
-    let appliedToInvoice = false;
+    let appliedOnce = false;
     
-    if (tax.rateType === 'fixed') {
+    if (tax.type === 'fixed') {
       // Fixed taxes are applied only once per invoice
       if (!appliedFixedTaxes.has(tax.name)) {
-        calculatedAmount = tax.value;
+        calculatedAmount = tax.amount || 0;
         appliedFixedTaxes.add(tax.name);
-        appliedToInvoice = true;
+        appliedOnce = true;
       }
       // For fixed taxes, don't add to running total as they're invoice-level
     } else {
@@ -44,20 +44,21 @@ export const calculateProductTaxes = (
       
       if (tax.base === 'HT') {
         taxBase = montantHT;
-      } else { // 'HT_PLUS_PREVIOUS'
+      } else { // 'HT + previous taxes'
         taxBase = runningTotal;
       }
       
-      calculatedAmount = (taxBase * tax.value) / 100;
+      calculatedAmount = (taxBase * (tax.rate || 0)) / 100;
       runningTotal += calculatedAmount;
     }
     
     taxCalculations.push({
       name: tax.name,
-      rateType: tax.rateType,
-      value: tax.value,
+      type: tax.type,
+      rate: tax.rate,
+      amount: tax.amount,
       calculatedAmount,
-      appliedToInvoice
+      appliedOnce
     });
     
     totalTaxes += calculatedAmount;
@@ -84,19 +85,23 @@ export const aggregateInvoiceTaxes = (
   // Create a map of allowed tax settings for quick lookup
   const allowedTaxMap = new Map<string, Tax>();
   allowedTaxSettings.forEach(tax => {
-    const key = `${tax.nom}_${tax.rateType}_${tax.valeur}`;
+    const key = tax.type === 'percentage' 
+      ? `${tax.nom}_percentage_${tax.valeur}`
+      : `${tax.nom}_fixed_${tax.amount || tax.valeur}`;
     allowedTaxMap.set(key, tax);
   });
 
   for (const ligne of lignes) {
     if (ligne.taxCalculations) {
       for (const taxCalc of ligne.taxCalculations) {
-        const taxKey = `${taxCalc.name}_${taxCalc.rateType}_${taxCalc.value}`;
+        const taxKey = taxCalc.type === 'percentage'
+          ? `${taxCalc.name}_percentage_${taxCalc.rate}`
+          : `${taxCalc.name}_fixed_${taxCalc.amount}`;
         const isAllowed = allowedTaxMap.has(taxKey);
         
-        if (taxCalc.rateType === 'fixed') {
+        if (taxCalc.type === 'fixed') {
           // Fixed taxes: apply only once per invoice and only if allowed in settings
-          if (!appliedFixedTaxes.has(taxCalc.name) && taxCalc.appliedToInvoice) {
+          if (!appliedFixedTaxes.has(taxCalc.name) && taxCalc.appliedOnce) {
             if (isAllowed) {
               const displayKey = taxCalc.name;
               fixedTaxes[displayKey] = taxCalc.calculatedAmount;
@@ -107,7 +112,7 @@ export const aggregateInvoiceTaxes = (
         } else {
           // Percentage taxes: aggregate by name and rate, only if allowed in settings
           if (isAllowed) {
-            const displayKey = `${taxCalc.name} ${taxCalc.value}%`;
+            const displayKey = `${taxCalc.name} ${taxCalc.rate}%`;
             if (taxGroups[displayKey]) {
               taxGroups[displayKey] += taxCalc.calculatedAmount;
             } else {
@@ -132,7 +137,7 @@ export const getDefaultProductTaxes = (
   globalTaxes: Tax[],
   documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur',
   productTaxRate: number = 19 // Default product tax rate
-): ProductTaxEntry[] => {
+): ProductTax[] => {
   // Filter applicable taxes for this document type
   const applicableTaxes = globalTaxes
     .filter(tax => tax.actif && tax.applicableDocuments.includes(documentType))
@@ -141,9 +146,11 @@ export const getDefaultProductTaxes = (
   return applicableTaxes.map(globalTax => ({
     id: globalTax.id,
     name: globalTax.nom,
-    rateType: globalTax.rateType,
-    value: globalTax.nom.toLowerCase().includes('tva') ? productTaxRate : globalTax.valeur,
-    base: globalTax.calculationBase === 'totalHT' ? 'HT' : 'HT_PLUS_PREVIOUS',
+    type: globalTax.type,
+    rate: globalTax.type === 'percentage' ? 
+      (globalTax.nom.toLowerCase().includes('tva') ? productTaxRate : globalTax.valeur) : undefined,
+    amount: globalTax.type === 'fixed' ? (globalTax.amount || globalTax.valeur) : undefined,
+    base: globalTax.calculationBase === 'totalHT' ? 'HT' : 'HT + previous taxes',
     order: globalTax.ordre
   }));
 };
