@@ -430,6 +430,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 

@@ -445,6 +445,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   };
 
   const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
