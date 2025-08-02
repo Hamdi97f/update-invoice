@@ -425,11 +425,19 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   currentY += settings.spacing.line;
   
   // Show aggregated taxes by type and rate
-  if (documentData.lignes && documentData.lignes.length > 0) {
-    const { aggregatedTaxes } = aggregateInvoiceTaxes(documentData.lignes);
+  if (documentData.taxes && documentData.taxes.length > 0) {
+    // Use the taxes already calculated and stored in the document
+    documentData.taxes.forEach((tax: any) => {
+      doc.text(`${tax.nom}:`, rightX - 50, currentY);
+      doc.text(formatCurrency(tax.montant), rightX, currentY, { align: 'right' });
+      currentY += settings.spacing.line;
+    });
+  } else if (documentData.lignes && documentData.lignes.length > 0) {
+    // Fallback: calculate taxes from product lines
+    const { taxGroups } = aggregateInvoiceTaxes(documentData.lignes);
     
-    if (Object.keys(aggregatedTaxes).length > 0) {
-      Object.entries(aggregatedTaxes).forEach(([taxKey, amount]) => {
+    if (Object.keys(taxGroups).length > 0) {
+      Object.entries(taxGroups).forEach(([taxKey, amount]) => {
         doc.text(`${taxKey}:`, rightX - 50, currentY);
         doc.text(formatCurrency(amount as number), rightX, currentY, { align: 'right' });
         currentY += settings.spacing.line;
@@ -687,7 +695,9 @@ export const generateFacturePDF = async (facture: Facture) => {
             prixUnitaire: ligne.prixUnitaire,
             remise: ligne.remise,
             montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC
+            montantTTC: ligne.montantTTC,
+            productTaxes: [],
+            taxCalculations: {}
           }));
         }
       } catch (error) {
@@ -697,43 +707,41 @@ export const generateFacturePDF = async (facture: Facture) => {
     
     // Load taxes if not already loaded
     if (!Array.isArray(facture.lignes) || facture.lignes.length === 0 || 
-        !facture.lignes.some(ligne => ligne.taxBreakdown && Object.keys(ligne.taxBreakdown).length > 0)) {
+        !facture.lignes.some(ligne => ligne.taxCalculations && Object.keys(ligne.taxCalculations).length > 0)) {
       try {
         const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
         const query = isElectron ? window.electronAPI.dbQuery : undefined;
         
         if (query) {
-          // Recalculate taxes for each line if not already done
+          // Load global taxes and recalculate for each line
           const taxesResult = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
           const taxes = taxesResult.map((tax: any) => ({
             ...tax,
             applicableDocuments: JSON.parse(tax.applicableDocuments)
           }));
           
-          // Update each ligne with proper tax calculations
+          // Import the tax calculator functions
+          const { calculateProductTaxes: calcProdTaxes, getDefaultProductTaxes, aggregateInvoiceTaxes } = await import('./productTaxCalculator');
+          
           facture.lignes = facture.lignes.map(ligne => {
-            const productTaxResult = calculateProductTaxes(
-              ligne.montantHT,
-              ligne.produit.tva,
-              taxes,
-              'factures'
-            );
+            const defaultTaxes = getDefaultProductTaxes(taxes, 'factures', ligne.produit.tva);
+            const taxResult = calcProdTaxes(ligne.montantHT, defaultTaxes);
             
             return {
               ...ligne,
-              taxes: productTaxResult.taxes,
-              taxBreakdown: productTaxResult.taxBreakdown,
-              montantTTC: productTaxResult.totalTTC
+              productTaxes: taxResult.productTaxes,
+              taxCalculations: taxResult.taxCalculations,
+              montantTTC: taxResult.totalTTC
             };
           });
           
-          // Aggregate taxes for the facture
-          const { aggregatedTaxes, totalTaxes } = aggregateInvoiceTaxes(facture.lignes);
+          // Aggregate taxes from all product lines
+          const { taxGroups, totalTaxes } = aggregateInvoiceTaxes(facture.lignes);
           facture.totalTaxes = totalTaxes;
           facture.totalTTC = facture.totalHT + totalTaxes;
           
-          // Convert to display format
-          facture.taxes = Object.entries(aggregatedTaxes).map(([taxKey, amount]) => ({
+          // Format for display
+          facture.taxes = Object.entries(taxGroups).map(([taxKey, amount]) => ({
             nom: taxKey,
             montant: amount
           }));
@@ -787,7 +795,9 @@ export const generateDevisPDF = async (devis: Devis) => {
             prixUnitaire: ligne.prixUnitaire,
             remise: ligne.remise,
             montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC
+            montantTTC: ligne.montantTTC,
+            productTaxes: [],
+            taxCalculations: {}
           }));
         }
       } catch (error) {
@@ -797,43 +807,41 @@ export const generateDevisPDF = async (devis: Devis) => {
     
     // Load taxes if not already loaded
     if (!Array.isArray(devis.lignes) || devis.lignes.length === 0 || 
-        !devis.lignes.some(ligne => ligne.taxBreakdown && Object.keys(ligne.taxBreakdown).length > 0)) {
+        !devis.lignes.some(ligne => ligne.taxCalculations && Object.keys(ligne.taxCalculations).length > 0)) {
       try {
         const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
         const query = isElectron ? window.electronAPI.dbQuery : undefined;
         
         if (query) {
-          // Recalculate taxes for each line if not already done
+          // Load global taxes and recalculate for each line
           const taxesResult = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
           const taxes = taxesResult.map((tax: any) => ({
             ...tax,
             applicableDocuments: JSON.parse(tax.applicableDocuments)
           }));
           
-          // Update each ligne with proper tax calculations
+          // Import the tax calculator functions
+          const { calculateProductTaxes: calcProdTaxes, getDefaultProductTaxes, aggregateInvoiceTaxes } = await import('./productTaxCalculator');
+          
           devis.lignes = devis.lignes.map(ligne => {
-            const productTaxResult = calculateProductTaxes(
-              ligne.montantHT,
-              ligne.produit.tva,
-              taxes,
-              'devis'
-            );
+            const defaultTaxes = getDefaultProductTaxes(taxes, 'devis', ligne.produit.tva);
+            const taxResult = calcProdTaxes(ligne.montantHT, defaultTaxes);
             
             return {
               ...ligne,
-              taxes: productTaxResult.taxes,
-              taxBreakdown: productTaxResult.taxBreakdown,
-              montantTTC: productTaxResult.totalTTC
+              productTaxes: taxResult.productTaxes,
+              taxCalculations: taxResult.taxCalculations,
+              montantTTC: taxResult.totalTTC
             };
           });
           
-          // Aggregate taxes for the devis
-          const { aggregatedTaxes, totalTaxes } = aggregateInvoiceTaxes(devis.lignes);
+          // Aggregate taxes from all product lines
+          const { taxGroups, totalTaxes } = aggregateInvoiceTaxes(devis.lignes);
           devis.totalTaxes = totalTaxes;
           devis.totalTTC = devis.totalHT + totalTaxes;
           
-          // Convert to display format
-          devis.taxes = Object.entries(aggregatedTaxes).map(([taxKey, amount]) => ({
+          // Format for display
+          devis.taxes = Object.entries(taxGroups).map(([taxKey, amount]) => ({
             nom: taxKey,
             montant: amount
           }));
@@ -887,7 +895,9 @@ export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
             prixUnitaire: ligne.produit?.prixUnitaire || 0,
             remise: 0,
             montantHT: (ligne.produit?.prixUnitaire || 0) * ligne.quantite,
-            montantTTC: (ligne.produit?.prixUnitaire || 0) * ligne.quantite * (1 + (ligne.produit?.tva || 0) / 100)
+            montantTTC: (ligne.produit?.prixUnitaire || 0) * ligne.quantite * (1 + (ligne.produit?.tva || 0) / 100),
+            productTaxes: [],
+            taxCalculations: {}
           }));
         }
       } catch (error) {
@@ -1023,7 +1033,9 @@ export const generateCommandeFournisseurPDF = async (commande: CommandeFournisse
             prixUnitaire: ligne.prixUnitaire,
             remise: ligne.remise,
             montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC
+            montantTTC: ligne.montantTTC,
+            productTaxes: [],
+            taxCalculations: {}
           }));
         }
       } catch (error) {
