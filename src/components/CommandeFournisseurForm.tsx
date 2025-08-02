@@ -197,18 +197,20 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       return;
     }
 
-    // Recalculate taxes for each line based on product's tax rate
+    // Recalculate taxes for each line using new cascade system
     const updatedLignes = lignes.map(ligne => {
+      // Convert global taxes to product taxes for this specific product
+      const productTaxes = convertGlobalTaxesToProductTaxes(taxes, ligne.produit.tva, 'commandesFournisseur');
+      
       const productTaxResult = calculateProductTaxes(
         ligne.montantHT,
-        ligne.produit.tva,
-        taxes,
+        productTaxes,
         'commandesFournisseur'
       );
 
       return {
         ...ligne,
-        taxes: productTaxResult.taxes,
+        appliedTaxes: productTaxResult.appliedTaxes,
         taxBreakdown: productTaxResult.taxBreakdown,
         montantTTC: productTaxResult.totalTTC
       };
@@ -216,9 +218,11 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
     setLignes(updatedLignes);
 
-    // Aggregate taxes across all lines
-    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
-    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+    // Get fixed taxes and aggregate all taxes
+    const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('commandesFournisseur'));
+    const totalHT = updatedLignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    const taxSummary = aggregateInvoiceTaxes(updatedLignes, fixedTaxes, totalHT);
+    const formattedTaxes = formatAggregatedTaxes(taxSummary);
     setTaxCalculations(formattedTaxes);
   };
 
@@ -309,13 +313,14 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Aggregate taxes from all product lines
-    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    // Get fixed taxes from global configuration
+    const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('commandesFournisseur'));
     
-    // Calculate total TTC as sum of HT + taxes
-    const totalTTC = totalHT + totalTaxes;
+    // Aggregate all taxes (percentage from products + fixed from invoice)
+    const taxSummary = aggregateInvoiceTaxes(lignes, fixedTaxes, totalHT);
+    const totalTTC = totalHT + taxSummary.totalAllTaxes;
     
-    return { totalHT, totalTaxes, totalTTC };
+    return { totalHT, totalTaxes: taxSummary.totalAllTaxes, totalTTC };
   };
 
   const handleSave = async () => {

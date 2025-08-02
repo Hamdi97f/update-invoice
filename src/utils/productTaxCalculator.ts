@@ -1,126 +1,176 @@
-import { ProductTax, LigneDocument } from '../types';
+import { ProductTax, LigneDocument, AppliedTax, InvoiceTaxSummary } from '../types';
 
 export interface ProductTaxResult {
-  taxes: ProductTax[];
+  appliedTaxes: AppliedTax[];
   taxBreakdown: { [key: string]: number };
-  totalTaxes: number;
+  totalPercentageTaxes: number;
   totalTTC: number;
 }
 
-// Calculate taxes for a single product line
+// Calculate taxes for a single product line using cascade logic
 export const calculateProductTaxes = (
   montantHT: number,
-  productTaxRate: number, // The product's own tax rate (e.g., 19, 7, 0)
-  globalTaxes: any[], // Global tax configuration
+  productTaxes: ProductTax[],
   documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur'
 ): ProductTaxResult => {
-  // Filter applicable taxes for this document type
-  const applicableTaxes = globalTaxes
-    .filter(tax => tax.actif && tax.applicableDocuments.includes(documentType))
+  // Filter only percentage taxes for product-level calculation
+  const percentageTaxes = productTaxes
+    .filter(tax => tax.type === 'percentage')
     .sort((a, b) => a.ordre - b.ordre);
 
-  const productTaxes: ProductTax[] = [];
+  const appliedTaxes: AppliedTax[] = [];
   const taxBreakdown: { [key: string]: number } = {};
   let runningTotal = montantHT;
-  let totalTaxes = 0;
+  let totalPercentageTaxes = 0;
 
-  for (const globalTax of applicableTaxes) {
-    let taxAmount = 0;
-    let base = 0;
-
-    if (globalTax.type === 'fixed') {
-      // Fixed amount tax (like stamp duty)
-      taxAmount = globalTax.valeur;
-      base = 0; // Not applicable for fixed taxes
+  for (const tax of percentageTaxes) {
+    let baseAmount: number;
+    
+    if (tax.base === 'HT') {
+      baseAmount = montantHT;
     } else {
-      // Percentage tax
-      if (globalTax.calculationBase === 'totalHT') {
-        base = montantHT;
-      } else {
-        // totalHTWithPreviousTaxes
-        base = runningTotal;
-      }
-
-      // Use the product's specific tax rate if this is a TVA-type tax
-      // Otherwise use the global tax rate
-      let effectiveRate = globalTax.valeur;
-      
-      // If this is a TVA tax and the product has a specific rate, use it
-      if (globalTax.nom.toLowerCase().includes('tva') || globalTax.nom.toLowerCase().includes('vat')) {
-        effectiveRate = productTaxRate;
-      }
-
-      taxAmount = (base * effectiveRate) / 100;
+      // HT_plus_previous
+      baseAmount = runningTotal;
     }
 
-    if (taxAmount > 0) {
-      const productTax: ProductTax = {
-        id: globalTax.id,
-        nom: globalTax.nom,
-        type: globalTax.type,
-        valeur: globalTax.type === 'fixed' ? globalTax.valeur : 
-                (globalTax.nom.toLowerCase().includes('tva') ? productTaxRate : globalTax.valeur),
-        calculationBase: globalTax.calculationBase,
-        ordre: globalTax.ordre
-      };
+    const taxAmount = (baseAmount * tax.rate) / 100;
 
-      productTaxes.push(productTax);
-      
-      // Create a unique key for tax breakdown (name + rate for percentage taxes)
-      const taxKey = globalTax.type === 'fixed' 
-        ? globalTax.nom 
-        : `${globalTax.nom} ${productTax.valeur}%`;
-      
-      taxBreakdown[taxKey] = taxAmount;
-      runningTotal += taxAmount;
-      totalTaxes += taxAmount;
-    }
+    const appliedTax: AppliedTax = {
+      name: tax.nom,
+      rate: tax.rate,
+      base: tax.base,
+      order: tax.ordre,
+      type: tax.type,
+      baseAmount,
+      taxAmount
+    };
+
+    appliedTaxes.push(appliedTax);
+    
+    // Create unique key for tax breakdown (name + rate)
+    const taxKey = `${tax.nom} ${tax.rate}%`;
+    taxBreakdown[taxKey] = taxAmount;
+    
+    runningTotal += taxAmount;
+    totalPercentageTaxes += taxAmount;
   }
 
   return {
-    taxes: productTaxes,
+    appliedTaxes,
     taxBreakdown,
-    totalTaxes,
-    totalTTC: montantHT + totalTaxes
+    totalPercentageTaxes,
+    totalTTC: montantHT + totalPercentageTaxes
   };
 };
 
-// Aggregate tax calculations from multiple product lines
-export const aggregateInvoiceTaxes = (lignes: LigneDocument[]): { 
-  aggregatedTaxes: { [key: string]: number },
-  totalTaxes: number 
-} => {
-  const aggregatedTaxes: { [key: string]: number } = {};
-  let totalTaxes = 0;
+// Aggregate taxes from multiple product lines and calculate fixed taxes
+export const aggregateInvoiceTaxes = (
+  lignes: LigneDocument[],
+  fixedTaxes: ProductTax[],
+  totalHT: number
+): InvoiceTaxSummary => {
+  const percentageTaxes: { [key: string]: number } = {};
+  const fixedTaxesCalculated: { [key: string]: number } = {};
+  let totalPercentageTaxes = 0;
+  let totalFixedTaxes = 0;
 
+  // Aggregate percentage taxes from all product lines
   for (const ligne of lignes) {
     if (ligne.taxBreakdown) {
       for (const [taxKey, amount] of Object.entries(ligne.taxBreakdown)) {
-        if (aggregatedTaxes[taxKey]) {
-          aggregatedTaxes[taxKey] += amount;
+        if (percentageTaxes[taxKey]) {
+          percentageTaxes[taxKey] += amount;
         } else {
-          aggregatedTaxes[taxKey] = amount;
+          percentageTaxes[taxKey] = amount;
         }
-        totalTaxes += amount;
+        totalPercentageTaxes += amount;
       }
     }
   }
 
-  return { aggregatedTaxes, totalTaxes };
+  // Calculate fixed taxes at invoice level
+  const sortedFixedTaxes = fixedTaxes
+    .filter(tax => tax.type === 'fixed')
+    .sort((a, b) => a.ordre - b.ordre);
+
+  let runningInvoiceTotal = totalHT + totalPercentageTaxes;
+
+  for (const tax of sortedFixedTaxes) {
+    let taxAmount: number;
+    
+    if (tax.base === 'HT') {
+      taxAmount = (totalHT * tax.rate) / 100;
+    } else {
+      // HT_plus_previous - use running total
+      taxAmount = (runningInvoiceTotal * tax.rate) / 100;
+    }
+
+    fixedTaxesCalculated[tax.nom] = taxAmount;
+    runningInvoiceTotal += taxAmount;
+    totalFixedTaxes += taxAmount;
+  }
+
+  return {
+    percentageTaxes,
+    fixedTaxes: fixedTaxesCalculated,
+    totalPercentageTaxes,
+    totalFixedTaxes,
+    totalAllTaxes: totalPercentageTaxes + totalFixedTaxes
+  };
 };
 
-// Convert aggregated taxes to TaxCalculation format for display
-export const formatAggregatedTaxes = (aggregatedTaxes: { [key: string]: number }): any[] => {
-  return Object.entries(aggregatedTaxes).map(([taxKey, amount]) => {
-    // Parse tax name and rate from key
-    const parts = taxKey.split(' ');
-    const rate = parts[parts.length - 1];
-    const name = parts.slice(0, -1).join(' ');
-    
-    return {
+// Convert tax configuration to product taxes
+export const convertGlobalTaxesToProductTaxes = (
+  globalTaxes: any[],
+  productTaxRate: number,
+  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur'
+): ProductTax[] => {
+  return globalTaxes
+    .filter(tax => tax.actif && tax.applicableDocuments.includes(documentType))
+    .map(tax => ({
+      id: tax.id,
+      nom: tax.nom,
+      rate: tax.nom.toLowerCase().includes('tva') ? productTaxRate : tax.valeur,
+      base: tax.calculationBase === 'totalHT' ? 'HT' as const : 'HT_plus_previous' as const,
+      ordre: tax.ordre,
+      type: tax.type
+    }));
+};
+
+// Format aggregated taxes for display
+export const formatAggregatedTaxes = (summary: InvoiceTaxSummary): any[] => {
+  const formattedTaxes: any[] = [];
+
+  // Add percentage taxes
+  Object.entries(summary.percentageTaxes).forEach(([taxKey, amount]) => {
+    formattedTaxes.push({
       nom: taxKey,
       montant: amount,
-      rate: rate.includes('%') ? parseFloat(rate.replace('%', '')) : undefined
-    };
+      type: 'percentage'
+    });
   });
+
+  // Add fixed taxes
+  Object.entries(summary.fixedTaxes).forEach(([taxName, amount]) => {
+    formattedTaxes.push({
+      nom: taxName,
+      montant: amount,
+      type: 'fixed'
+    });
+  });
+
+  return formattedTaxes;
+};
+
+// Legacy function for backward compatibility - now uses new system
+export const calculateProductTaxes = (
+  montantHT: number,
+  productTaxRate: number,
+  globalTaxes: any[],
+  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur'
+): ProductTaxResult => {
+  // Convert global taxes to product taxes using the product's specific rate
+  const productTaxes = convertGlobalTaxesToProductTaxes(globalTaxes, productTaxRate, documentType);
+  
+  return calculateProductTaxes(montantHT, productTaxes, documentType);
 };

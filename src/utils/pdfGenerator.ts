@@ -953,10 +953,42 @@ export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
                 base = runningTotal;
               }
               montant = (base * tax.valeur) / 100;
+          // Get fixed taxes for this document type
+          const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
+          const query = isElectron ? window.electronAPI.dbQuery : undefined;
+          
+          let fixedTaxes: any[] = [];
+          if (query) {
+            try {
+              const taxesResult = await query(`
+                SELECT * FROM taxes 
+                WHERE actif = 1 AND type = 'fixed' AND json_extract(applicableDocuments, '$') LIKE '%${documentData.type === 'facture' ? 'factures' : documentData.type === 'devis' ? 'devis' : documentData.type === 'bonLivraison' ? 'bonsLivraison' : 'commandesFournisseur'}%'
+                ORDER BY ordre ASC
+              `);
+              
+              fixedTaxes = taxesResult.map((tax: any) => ({
+                ...tax,
+                applicableDocuments: JSON.parse(tax.applicableDocuments)
+              }));
+            } catch (error) {
+              console.error('Error loading fixed taxes for PDF:', error);
             }
+          }
+          
+          const taxSummary = aggregateInvoiceTaxes(documentData.lignes, fixedTaxes, documentData.totalHT);
             
-            taxes.push({
-              taxId: tax.id,
+          // Show percentage taxes
+          if (Object.keys(taxSummary.percentageTaxes).length > 0) {
+            Object.entries(taxSummary.percentageTaxes).forEach(([taxKey, amount]) => {
+              doc.text(`${taxKey}:`, rightX - 50, currentY);
+              doc.text(formatCurrency(amount as number), rightX, currentY, { align: 'right' });
+              currentY += settings.spacing.line;
+            });
+          }
+          
+          // Show fixed taxes
+          if (Object.keys(taxSummary.fixedTaxes).length > 0) {
+            Object.entries(taxSummary.fixedTaxes).forEach(([taxKey, amount]) => {
               nom: tax.nom,
               base,
               montant
