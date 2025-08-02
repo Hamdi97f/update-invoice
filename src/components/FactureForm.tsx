@@ -305,8 +305,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
     if (lignes.length === 0) {
       setTaxesPercentage([]);
       setTaxesFixes([]);
-      return;
-    }
+         (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
     // Recalculer les taxes pour chaque ligne
     const updatedLignes = lignes.map(ligne => {
@@ -314,6 +314,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
         ? ligne.taxes 
         : creerTaxesDefautProduit(ligne.produit.tva);
+          totalTaxesPercentage, // Use calculated taxes as totalTVA
       
       const resultatTaxes = calculerTaxesProduit(
         ligne.montantHT,

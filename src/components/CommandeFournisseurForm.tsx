@@ -360,7 +360,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
             commandeData.dateReception.toISOString(),
             commandeData.fournisseur.id,
             commandeData.totalHT,
-            commandeData.totalTVA,
+            totalTaxesPercentage, // Use calculated taxes as totalTVA
             commandeData.totalTTC,
             commandeData.statut,
             commandeData.notes

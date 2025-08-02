@@ -386,8 +386,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       try {
         await query(
           `INSERT OR REPLACE INTO devis 
-           (id, numero, date, dateValidite, clientId, totalHT, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, dateValidite, clientId, totalHT, totalTVA, totalTTC, statut, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             devisData.id,
             devisData.numero,
@@ -395,6 +395,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
             devisData.dateValidite.toISOString(),
             devisData.client.id,
             devisData.totalHT,
+            totalTaxesPercentage, // Use calculated taxes as totalTVA
             devisData.totalTTC,
             devisData.statut,
             devisData.notes
