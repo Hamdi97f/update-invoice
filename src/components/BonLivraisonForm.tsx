@@ -197,20 +197,18 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       return;
     }
 
-    // Recalculate taxes for each line using new cascade system
+    // Recalculate taxes for each line based on product's tax rate
     const updatedLignes = lignes.map(ligne => {
-      // Convert global taxes to product taxes for this specific product
-      const productTaxes = convertGlobalTaxesToProductTaxes(taxes, ligne.produit.tva, 'bonsLivraison');
-      
       const productTaxResult = calculateProductTaxes(
         ligne.montantHT,
-        productTaxes,
+        ligne.produit.tva,
+        taxes,
         'bonsLivraison'
       );
 
       return {
         ...ligne,
-        appliedTaxes: productTaxResult.appliedTaxes,
+        taxes: productTaxResult.taxes,
         taxBreakdown: productTaxResult.taxBreakdown,
         montantTTC: productTaxResult.totalTTC
       };
@@ -218,11 +216,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
     setLignes(updatedLignes);
 
-    // Get fixed taxes and aggregate all taxes
-    const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('bonsLivraison'));
-    const totalHT = updatedLignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    const taxSummary = aggregateInvoiceTaxes(updatedLignes, fixedTaxes, totalHT);
-    const formattedTaxes = formatAggregatedTaxes(taxSummary);
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
     setTaxCalculations(formattedTaxes);
   };
 
@@ -319,14 +315,13 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    // Get fixed taxes from global configuration
-    const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('bonsLivraison'));
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Aggregate all taxes (percentage from products + fixed from invoice)
-    const taxSummary = aggregateInvoiceTaxes(lignes, fixedTaxes, totalHT);
-    const totalTTC = totalHT + taxSummary.totalAllTaxes;
+    // Calculate total TTC as sum of HT + taxes
+    const totalTTC = totalHT + totalTaxes;
     
-    return { totalHT, totalTaxes: taxSummary.totalAllTaxes, totalTTC };
+    return { totalHT, totalTaxes, totalTTC };
   };
 
   const handleSave = async () => {

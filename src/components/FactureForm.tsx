@@ -282,20 +282,18 @@ const FactureForm: React.FC<FactureFormProps> = ({
       return;
     }
 
-    // Recalculate taxes for each line using new cascade system
+    // Recalculate taxes for each line based on product's tax rate
     const updatedLignes = lignes.map(ligne => {
-      // Convert global taxes to product taxes for this specific product
-      const productTaxes = convertGlobalTaxesToProductTaxes(taxes, ligne.produit.tva, 'factures');
-      
       const productTaxResult = calculateProductTaxes(
         ligne.montantHT,
-        productTaxes,
+        ligne.produit.tva,
+        taxes,
         'factures'
       );
 
       return {
         ...ligne,
-        appliedTaxes: productTaxResult.appliedTaxes,
+        taxes: productTaxResult.taxes,
         taxBreakdown: productTaxResult.taxBreakdown,
         montantTTC: productTaxResult.totalTTC
       };
@@ -303,11 +301,9 @@ const FactureForm: React.FC<FactureFormProps> = ({
 
     setLignes(updatedLignes);
 
-    // Get fixed taxes and aggregate all taxes
-    const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('factures'));
-    const totalHT = updatedLignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    const taxSummary = aggregateInvoiceTaxes(updatedLignes, fixedTaxes, totalHT);
-    const formattedTaxes = formatAggregatedTaxes(taxSummary);
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
     setTaxCalculations(formattedTaxes);
   };
 
@@ -360,15 +356,6 @@ const FactureForm: React.FC<FactureFormProps> = ({
       setLignes(newLignes);
     } else {
       // Add new line
-      // Convert global taxes to product taxes for this specific product
-      const productTaxes = convertGlobalTaxesToProductTaxes(taxes, produit.tva, 'factures');
-      
-      const productTaxResult = calculateProductTaxes(
-        produit.prixUnitaire,
-        productTaxes,
-        'factures'
-      );
-      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
@@ -376,9 +363,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT: produit.prixUnitaire,
-        montantTTC: productTaxResult.totalTTC,
-        appliedTaxes: productTaxResult.appliedTaxes,
-        taxBreakdown: productTaxResult.taxBreakdown
+        montantTTC: calculateTTC(produit.prixUnitaire, produit.tva)
       };
       setLignes([...lignes, newLigne]);
     }
@@ -406,26 +391,24 @@ const FactureForm: React.FC<FactureFormProps> = ({
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
     
-    // Convert global taxes to product taxes and calculate
-    const productTaxes = convertGlobalTaxesToProductTaxes(taxes, ligne.produit.tva, 'factures');
+    // Calculate taxes for this specific product
     const productTaxResult = calculateProductTaxes(
       montantHT,
-      productTaxes,
+      ligne.produit.tva,
+      taxes,
       'factures'
     );
     
-    ligne.appliedTaxes = productTaxResult.appliedTaxes;
+    ligne.taxes = productTaxResult.taxes;
     ligne.taxBreakdown = productTaxResult.taxBreakdown;
     ligne.montantTTC = productTaxResult.totalTTC;
 
     setLignes(newLignes);
     
-    // Recalculate invoice-level taxes including fixed taxes
+    // Recalculate invoice-level taxes
     setTimeout(() => {
-      const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('factures'));
-      const totalHT = newLignes.reduce((sum, l) => sum + l.montantHT, 0);
-      const taxSummary = aggregateInvoiceTaxes(newLignes, fixedTaxes, totalHT);
-      const formattedTaxes = formatAggregatedTaxes(taxSummary);
+      const { aggregatedTaxes } = aggregateInvoiceTaxes(newLignes);
+      const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
       setTaxCalculations(formattedTaxes);
     }, 0);
   };
@@ -437,14 +420,12 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Get fixed taxes from global configuration
-    const fixedTaxes = taxes.filter(tax => tax.type === 'fixed' && tax.applicableDocuments.includes('factures'));
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
     
-    // Aggregate all taxes (percentage from products + fixed from invoice)
-    const taxSummary = aggregateInvoiceTaxes(lignes, fixedTaxes, totalHT);
-    const totalTTC = totalHT + taxSummary.totalAllTaxes;
+    const totalTTC = totalHT + totalTaxes;
     
-    return { totalHT, totalTaxes: taxSummary.totalAllTaxes, totalTTC };
+    return { totalHT, totalTaxes, totalTTC };
   };
 
   const handleSave = async () => {
@@ -936,18 +917,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
                           <td className="px-4 py-3 text-sm font-medium">
                             {formatCurrency(ligne.montantHT)}
                           </td>
-                          <td className="px-4 py-3 text-sm font-medium">
-                            {ligne.appliedTaxes && ligne.appliedTaxes.length > 0 ? (
-                              <div className="space-y-1">
-                                {ligne.appliedTaxes.map((tax, idx) => (
-                                  <div key={idx} className="text-xs">
-                                    {tax.name} {tax.rate}%: {formatCurrency(tax.taxAmount)}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              formatCurrency(ligne.montantHT * ligne.produit.tva / 100)
-                            )}
+                          <td className="px-4 py-3 text-sm font-medium text-blue-600">
+                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
                             {formatCurrency(ligne.montantTTC)}
@@ -999,20 +970,17 @@ const FactureForm: React.FC<FactureFormProps> = ({
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes appliquées:</span>
+                            <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
                           {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {calc.nom}
-                                {calc.type === 'fixed' && <span className="text-xs ml-1">(fixe)</span>}:
-                              </span>
+                              <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>
                             </div>
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium">
-                          <span>Total toutes taxes:</span>
+                          <span>Total taxes:</span>
                           <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                       </>

@@ -48,10 +48,10 @@ export interface Tax {
 export interface ProductTax {
   id: string;
   nom: string;
-  rate: number;
-  base: 'HT' | 'HT_plus_previous';
-  ordre: number;
   type: 'percentage' | 'fixed';
+  valeur: number;
+  calculationBase: 'totalHT' | 'totalHTWithPreviousTaxes';
+  ordre: number;
 }
 
 export interface LigneDocument {
@@ -63,26 +63,7 @@ export interface LigneDocument {
   montantHT: number;
   montantTTC: number;
   taxes?: ProductTax[];
-  taxBreakdown?: { [key: string]: number };
-  appliedTaxes?: AppliedTax[];
-}
-
-export interface AppliedTax {
-  name: string;
-  rate: number;
-  base: 'HT' | 'HT_plus_previous';
-  order: number;
-  type: 'percentage' | 'fixed';
-  baseAmount: number;
-  taxAmount: number;
-}
-
-export interface InvoiceTaxSummary {
-  percentageTaxes: { [key: string]: number }; // "TVA 19%" -> amount
-  fixedTaxes: { [key: string]: number }; // "Stamp Duty" -> amount
-  totalPercentageTaxes: number;
-  totalFixedTaxes: number;
-  totalAllTaxes: number;
+  taxBreakdown?: { [key: string]: number }; // Tax name -> amount
 }
 
 export interface TaxCalculation {
