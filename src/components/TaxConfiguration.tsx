@@ -122,7 +122,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     const taxData: Tax = {
       id: editingTax?.id || uuidv4(),
       nom: formData.nom.trim(),
-      type: formData.type,
+      rateType: formData.rateType,
       valeur: formData.valeur,
       calculationBase: formData.calculationBase,
       applicableDocuments: formData.applicableDocuments,
@@ -154,7 +154,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     setEditingTax(tax);
     setFormData({
       nom: tax.nom,
-      type: tax.type,
+      rateType: tax.rateType,
       valeur: tax.valeur,
       calculationBase: tax.calculationBase,
       applicableDocuments: tax.applicableDocuments,
@@ -222,7 +222,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
   const resetForm = () => {
     setFormData({
       nom: '',
-      type: 'percentage',
+      rateType: 'percentage',
       valeur: 0,
       calculationBase: 'totalHT',
       applicableDocuments: [],
@@ -424,8 +424,8 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                       Type de taxe *
                     </label>
                     <select
-                      value={formData.type}
-                      onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'percentage' | 'fixed' }))}
+                      value={formData.rateType}
+                      onChange={(e) => setFormData(prev => ({ ...prev, rateType: e.target.value as 'percentage' | 'fixed' }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="percentage">Pourcentage</option>
@@ -449,12 +449,13 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                       />
                       <span className="absolute right-3 top-2 text-gray-500 text-sm">
                         {formData.type === 'percentage' ? '%' : 'TND'}
+                        {formData.rateType === 'percentage' ? '%' : 'TND'}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {formData.type === 'percentage' && (
+                {formData.rateType === 'percentage' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Base de calcul *

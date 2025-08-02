@@ -37,7 +37,7 @@ export interface Produit {
 export interface Tax {
   id: string;
   nom: string;
-  type: 'percentage' | 'fixed';
+  rateType: 'percentage' | 'fixed';
   valeur: number;
   calculationBase: 'totalHT' | 'totalHTWithPreviousTaxes';
   applicableDocuments: ('factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur')[];
@@ -45,12 +45,21 @@ export interface Tax {
   actif: boolean;
 }
 
-export interface ProductTax {
+export interface ProductTaxEntry {
   id: string;
-  nom: string;
-  rate: number; // percentage rate (e.g., 19, 7, 1)
-  base: 'HT' | 'HT_PLUS_PREVIOUS'; // calculation base
+  name: string;
+  rateType: 'percentage' | 'fixed';
+  value: number; // percentage (e.g., 19) or fixed amount (e.g., 5)
+  base: 'HT' | 'HT_PLUS_PREVIOUS';
   order: number; // calculation order for cascade
+}
+
+export interface ProductTaxCalculation {
+  name: string;
+  rateType: 'percentage' | 'fixed';
+  value: number;
+  calculatedAmount: number;
+  appliedToInvoice: boolean; // for fixed taxes applied once per invoice
 }
 
 export interface LigneDocument {
@@ -61,14 +70,15 @@ export interface LigneDocument {
   remise: number;
   montantHT: number;
   montantTTC: number;
-  productTaxes: ProductTax[]; // List of taxes for this product
-  taxCalculations: { [key: string]: number }; // Tax name+rate -> calculated amount
+  productTaxes: ProductTaxEntry[]; // List of taxes for this product
+  taxCalculations: ProductTaxCalculation[]; // Calculated tax amounts
 }
 
 export interface TaxCalculation {
   taxId?: string;
   nom: string;
-  rate?: number; // For aggregated taxes by rate
+  rateType: 'percentage' | 'fixed';
+  value: number;
   base?: number;
   montant: number;
 }

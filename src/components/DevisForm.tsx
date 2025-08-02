@@ -3,7 +3,14 @@ import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart,
 import { Client, Produit, LigneDocument, Devis, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateProductTaxes, aggregateInvoiceTaxes, formatTaxGroupsForDisplay, getDefaultProductTaxes } from '../utils/productTaxCalculator';
+import { 
+  calculateProductTaxes, 
+  aggregateInvoiceTaxes, 
+  formatTaxSummaryForDisplay, 
+  getDefaultProductTaxes,
+  calculateInvoiceTotalTTC,
+  calculateInvoiceTotalHT
+} from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -32,6 +39,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [invoiceTaxSummary, setInvoiceTaxSummary] = useState<any[]>([]);
+  const [appliedFixedTaxes, setAppliedFixedTaxes] = useState<Set<string>>(new Set());
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -195,6 +203,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   };
 
   const recalculateInvoiceTaxes = () => {
+    const newAppliedFixedTaxes = new Set<string>();
+    
     // Calculate taxes for each product line
     const updatedLignes = lignes.map(ligne => {
       // Get default taxes for this product based on global settings
@@ -206,7 +216,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         : defaultTaxes;
       
       // Calculate taxes for this product
-      const taxResult = calculateProductTaxes(ligne.montantHT, productTaxes);
+      const taxResult = calculateProductTaxes(ligne.montantHT, productTaxes, newAppliedFixedTaxes);
 
       return {
         ...ligne,
@@ -217,10 +227,11 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     });
 
     setLignes(updatedLignes);
+    setAppliedFixedTaxes(newAppliedFixedTaxes);
 
     // Aggregate taxes from all product lines
-    const { taxGroups } = aggregateInvoiceTaxes(updatedLignes);
-    const formattedTaxes = formatTaxGroupsForDisplay(taxGroups);
+    const { taxGroups, fixedTaxes } = aggregateInvoiceTaxes(updatedLignes, taxes);
+    const formattedTaxes = formatTaxSummaryForDisplay(taxGroups, fixedTaxes);
     setInvoiceTaxSummary(formattedTaxes);
   };
 
@@ -291,9 +302,9 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT,
-        montantTTC: taxResult.totalTTC,
+        montantTTC: produit.prixUnitaire, // Will be recalculated by tax system
         productTaxes: taxResult.productTaxes,
-        taxCalculations: taxResult.taxCalculations
+        taxCalculations: []
       };
       setLignes([...lignes, newLigne]);
     }
@@ -327,9 +338,9 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   };
 
   const calculateTotals = () => {
-    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
-    const totalTTC = totalHT + totalTaxes;
+    const totalHT = calculateInvoiceTotalHT(lignes);
+    const totalTTC = calculateInvoiceTotalTTC(lignes);
+    const totalTaxes = totalTTC - totalHT;
     
     return { totalHT, totalTaxes, totalTTC };
   };
@@ -660,7 +671,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                                 <Store className="w-4 h-4 text-green-600" />
                                 <div>
                                   <div className="font-medium text-gray-900 group-hover:text-green-700">
-                                    {produit.ref && (
+                                    <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                                       <span className="text-xs text-gray-500 mr-2">[{produit.ref}]</span>
                                     )}
                                     {produit.nom}
@@ -779,11 +790,11 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium">
-                            {ligne.taxCalculations && Object.keys(ligne.taxCalculations).length > 0 ? (
+                            {ligne.taxCalculations && ligne.taxCalculations.length > 0 ? (
                               <div className="space-y-1">
-                                {Object.entries(ligne.taxCalculations).map(([taxKey, amount]) => (
-                                  <div key={taxKey} className="text-xs">
-                                    {taxKey}: {formatCurrency(amount)}
+                                {ligne.taxCalculations.map((taxCalc, idx) => (
+                                  <div key={idx} className="text-xs">
+                                    {taxCalc.name} {taxCalc.rateType === 'percentage' ? `${taxCalc.value}%` : 'fixe'}: {formatCurrency(taxCalc.calculatedAmount)}
                                   </div>
                                 ))}
                               </div>
