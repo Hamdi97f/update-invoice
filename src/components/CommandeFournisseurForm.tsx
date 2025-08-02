@@ -36,6 +36,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
   const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
+  const [taxes, setTaxes] = useState<any[]>([]);
+  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
   
   // Search states
   const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
@@ -54,10 +56,22 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
   const { query, isElectron, isReady } = useDatabase();
 
+  const generateNumero = async () => {
+    if (!isReady) return;
+    
+    try {
+      const numero = await getNextDocumentNumber('commande_fournisseur');
+      setFormData(prev => ({ ...prev, numero }));
+    } catch (error) {
+      console.error('Error generating numero:', error);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && isReady) {
       loadFournisseurs();
       loadProduits();
+      loadTaxes();
       
       if (commande) {
         setFormData({
@@ -170,19 +184,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
+      setTaxes(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
-    }
-  };
-
-  const generateNumero = async () => {
-    if (!isReady) return;
-    
-    try {
-      const numero = await getNextDocumentNumber('commande_fournisseur', isElectron, query);
-      setFormData(prev => ({ ...prev, numero }));
-    } catch (error) {
-      console.error('Error generating numero:', error);
     }
   };
 
@@ -311,8 +315,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     
     // Pour les commandes fournisseur, pas de taxes fixes
     const totalTTC = totalHT + totalTaxesPercentage;
+    const totalTaxes = totalTaxesPercentage;
     
-    return { totalHT, totalTaxesPercentage, totalTTC };
+    return { totalHT, totalTaxesPercentage, totalTTC, totalTaxes };
   };
 
   const handleSave = async () => {
@@ -323,7 +328,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       return;
     }
 
-    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
     const commandeData: CommandeFournisseur = {
       id: commande?.id || uuidv4(),
@@ -333,21 +338,21 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       fournisseur: selectedFournisseur,
       lignes,
       totalHT,
-      taxesPercentage,
-      taxesFixes: [],
-      totalTaxesPercentage,
-      totalTaxesFixes: 0,
+      totalTVA: 0, // Set to 0 as we're not using product TVA
+      taxes: taxCalculations,
+      totalTaxes,
       totalTTC,
       statut: formData.statut,
-      notes: formData.notes
+      notes: formData.notes,
+      taxesPercentage
     };
 
     if (isElectron) {
       try {
         await query(
           `INSERT OR REPLACE INTO commandes_fournisseur 
-           (id, numero, date, dateReception, fournisseurId, totalHT, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, dateReception, fournisseurId, totalHT, totalTVA, totalTTC, statut, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             commandeData.id,
             commandeData.numero,
@@ -355,6 +360,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
             commandeData.dateReception.toISOString(),
             commandeData.fournisseur.id,
             commandeData.totalHT,
+            commandeData.totalTVA,
             commandeData.totalTTC,
             commandeData.statut,
             commandeData.notes
@@ -438,7 +444,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -814,23 +820,23 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                     </div>
                     
                     {/* Tax calculations */}
-                    {taxesPercentage.length > 0 && (
+                    {taxCalculations.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {taxesPercentage.map((taxe, index) => (
+                          {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{taxe.nom}:</span>
-                              <span>{formatCurrency(taxe.montant)}</span>
+                              <span className="text-gray-600">{calc.nom}:</span>
+                              <span>{formatCurrency(calc.montant)}</span>
                             </div>
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxesPercentage)}</span>
+                          <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                       </>
                     )}
