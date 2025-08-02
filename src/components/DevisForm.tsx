@@ -54,6 +54,17 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
 
   const { query, isElectron, isReady } = useDatabase();
 
+  const generateNumero = async () => {
+    if (!isReady) return;
+    
+    try {
+      const numero = await getNextDocumentNumber('devis', isElectron, query);
+      setFormData(prev => ({ ...prev, numero }));
+    } catch (error) {
+      console.error('Error generating numero:', error);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && isReady) {
       loadClients();
@@ -173,17 +184,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       setTaxes(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
-    }
-  };
-
-  const generateNumero = async () => {
-    if (!isReady) return;
-    
-    try {
-      const numero = await getNextDocumentNumber('devis', isElectron, query);
-      setFormData(prev => ({ ...prev, numero }));
-    } catch (error) {
-      console.error('Error generating numero:', error);
     }
   };
 
@@ -385,8 +385,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       try {
         await query(
           `INSERT OR REPLACE INTO devis 
-           (id, numero, date, dateValidite, clientId, totalHT, totalTVA, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, dateValidite, clientId, totalHT, totalTTC, statut, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             devisData.id,
             devisData.numero,
@@ -394,7 +394,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
             devisData.dateValidite.toISOString(),
             devisData.client.id,
             devisData.totalHT,
-            devisData.totalTVA,
             devisData.totalTTC,
             devisData.statut,
             devisData.notes
@@ -462,7 +461,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -800,7 +799,10 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium">
-                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
+                            {ligne.taxes && ligne.taxes.length > 0 
+                              ? ligne.taxes.map(t => `${t.nom} ${t.taux}%`).join(', ')
+                              : `${ligne.produit.tva}%`
+                            }
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-green-600">
                             {formatCurrency(ligne.montantTTC)}
@@ -838,23 +840,23 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {taxCalculations.length > 0 && (
+                    {taxesPercentage.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxesPercentage.map((taxe, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{calc.nom}:</span>
-                              <span>{formatCurrency(calc.montant)}</span>
+                              <span className="text-gray-600">{taxe.nom}:</span>
+                              <span>{formatCurrency(taxe.montant)}</span>
                             </div>
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
+                          <span>{formatCurrency(totalTaxesPercentage)}</span>
                         </div>
                       </>
                     )}
