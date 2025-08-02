@@ -36,6 +36,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
+  const [taxes, setTaxes] = useState<any[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -845,11 +846,13 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par produit:</span>
                           </div>
                           {taxesPercentage.map((taxe, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{taxe.nom}:</span>
+                              <span className="text-gray-600">
+                                {taxe.nom} {taxe.taux ? `${taxe.taux}%` : ''}:
+                              </span>
                               <span>{formatCurrency(taxe.montant)}</span>
                             </div>
                           ))}

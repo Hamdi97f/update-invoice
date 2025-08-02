@@ -36,8 +36,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -71,7 +69,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     if (isOpen && isReady) {
       loadClients();
       loadProduits();
-      loadTaxes();
       
       if (bonLivraison) {
         setFormData({
@@ -184,7 +181,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
-      setTaxes(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
     }
@@ -313,26 +309,16 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
-  const aggregateInvoiceTaxes = (lignes: LigneDocument[]) => {
-    const totalTaxes = lignes.reduce((sum, ligne) => {
-      const montantHT = ligne.quantite * ligne.produit.prixUnitaire;
-      const montantTVA = montantHT * (ligne.produit.tva / 100);
-      return sum + montantTVA;
-    }, 0);
-    
-    return { totalTaxes };
-  };
-
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    // Aggregate taxes from all product lines
-    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    // Agréger les taxes des produits
+    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
     
-    // Calculate total TTC as sum of HT + taxes
-    const totalTTC = totalHT + totalTaxes;
+    // Pour les bons de livraison, pas de taxes fixes
+    const totalTTC = totalHT + totalTaxesPercentage;
     
-    return { totalHT, totalTaxes, totalTTC };
+    return { totalHT, totalTaxesPercentage, totalTTC };
   };
 
   const handleSave = async () => {
@@ -343,8 +329,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       return;
     }
 
-    // Calculate totals for display purposes
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
     const bonLivraisonData: BonLivraison = {
       id: bonLivraison?.id || uuidv4(),
@@ -356,10 +341,11 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       factureId: formData.factureId || undefined,
       notes: formData.notes,
       totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
+      taxesPercentage,
+      taxesFixes: [],
+      totalTaxesPercentage,
+      totalTaxesFixes: 0,
       totalTTC,
-      taxes: taxCalculations,
-      totalTaxes
     };
 
     if (isElectron) {
@@ -377,7 +363,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
             bonLivraisonData.factureId || null,
             bonLivraisonData.notes,
             bonLivraisonData.totalHT,
-            bonLivraisonData.totalTVA,
+            bonLivraisonData.totalTaxesPercentage,
             bonLivraisonData.totalTTC
           ]
         );
@@ -439,7 +425,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -800,14 +786,14 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                     </div>
                     
                     {/* Tax calculations */}
-                    {taxCalculations.length > 0 && (
+                    {taxesPercentage.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
                             <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxesPercentage.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>
@@ -816,7 +802,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
+                          <span>{formatCurrency(totalTaxesPercentage)}</span>
                         </div>
                       </>
                     )}
