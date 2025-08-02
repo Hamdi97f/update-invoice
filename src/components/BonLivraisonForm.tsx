@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Search, Truck, Store, Calculator 
 import { Client, Produit, LigneDocument, BonLivraison, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateProductTaxes, aggregateInvoiceTaxes, formatTaxSummaryForDisplay, getDefaultProductTaxes } from '../utils/productTaxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -31,7 +31,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [invoiceTaxSummary, setInvoiceTaxSummary] = useState<any[]>([]);
+  const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -68,7 +68,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         setSelectedClient(bonLivraison.client);
         setClientSearchTerm(bonLivraison.client.nom);
         setLignes(bonLivraison.lignes);
-        setInvoiceTaxSummary(bonLivraison.taxes || []);
+        setTaxCalculations(bonLivraison.taxes || []);
       } else {
         generateNumero();
         // Reset form for new bon de livraison
@@ -83,7 +83,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         setSelectedClient(null);
         setClientSearchTerm('');
         setLignes([]);
-        setInvoiceTaxSummary([]);
+        setTaxCalculations([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -110,11 +110,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    if (lignes.length > 0) {
-      recalculateAllTaxes();
-    } else {
-      setInvoiceTaxSummary([]);
-    }
+    recalculateInvoiceTaxes();
   }, [lignes, taxes]);
 
   const loadClients = async () => {
@@ -195,32 +191,35 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     }
   };
 
-  const recalculateAllTaxes = () => {
-    // Step 1: Calculate taxes for each product line
+  const recalculateInvoiceTaxes = () => {
+    if (lignes.length === 0) {
+      setTaxCalculations([]);
+      return;
+    }
+
+    // Recalculate taxes for each line based on product's tax rate
     const updatedLignes = lignes.map(ligne => {
-      // Get default taxes for this product if not already set
-      let productTaxes = ligne.productTaxes;
-      if (!productTaxes || productTaxes.length === 0) {
-        productTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', ligne.produit.tva);
-      }
-      
-      // Calculate product-level taxes (percentage only)
-      const productTaxResult = calculateProductTaxes(ligne.montantHT, productTaxes);
+      const productTaxResult = calculateProductTaxes(
+        ligne.montantHT,
+        ligne.produit.tva,
+        taxes,
+        'bonsLivraison'
+      );
 
       return {
         ...ligne,
-        productTaxes,
-        productTaxResults: productTaxResult.productTaxResults,
-        montantTTC: productTaxResult.productTTC
+        taxes: productTaxResult.taxes,
+        taxBreakdown: productTaxResult.taxBreakdown,
+        montantTTC: productTaxResult.totalTTC
       };
     });
 
     setLignes(updatedLignes);
 
-    // Step 2: Calculate invoice-level taxes
-    const invoiceTaxResult = calculateInvoiceTaxes(updatedLignes, taxes);
-    const formattedTaxes = formatInvoiceTaxSummary(invoiceTaxResult);
-    setInvoiceTaxSummary(formattedTaxes);
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+    setTaxCalculations(formattedTaxes);
   };
 
   // Filter clients based on search term
@@ -263,13 +262,13 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       const ligne = newLignes[existingLineIndex];
       const montantHT = ligne.quantite * produit.prixUnitaire;
       ligne.montantHT = montantHT;
+      ligne.montantTTC = calculateTTC(montantHT, produit.tva);
       
       setLignes(newLignes);
     } else {
       // For bon de livraison, include prices for display
       const montantHT = produit.prixUnitaire;
-      
-      const defaultProductTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', produit.tva);
+      const montantTTC = calculateTTC(montantHT, produit.tva);
       
       const newLigne: LigneDocument = {
         id: uuidv4(),
@@ -278,9 +277,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT: montantHT,
-        montantTTC: montantHT,
-        productTaxes: defaultProductTaxes,
-        productTaxResults: []
+        montantTTC: montantTTC
       };
       setLignes([...lignes, newLigne]);
     }
@@ -306,6 +303,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     // Calculate amounts for bon de livraison
     const montantHT = ligne.quantite * ligne.produit.prixUnitaire;
     ligne.montantHT = montantHT;
+    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
 
     setLignes(newLignes);
   };
@@ -315,12 +313,13 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const calculateTotals = () => {
-    // Calculate using new tax system
-    const invoiceTaxResult = calculateInvoiceTaxes(lignes, taxes);
+    const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    const totalHT = calculateInvoiceTotalHT(lignes);
-    const totalTaxes = invoiceTaxResult.totalAllTaxes;
-    const totalTTC = invoiceTaxResult.invoiceTotalTTC;
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    
+    // Calculate total TTC as sum of HT + taxes
+    const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };
   };
@@ -346,9 +345,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       factureId: formData.factureId || undefined,
       notes: formData.notes,
       totalHT,
-      totalTVA: 0, // Legacy field
+      totalTVA: 0, // Set to 0 as we're not using product TVA
       totalTTC,
-      taxes: invoiceTaxSummary,
+      taxes: taxCalculations,
       totalTaxes
     };
 
@@ -789,14 +788,15 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {invoiceTaxSummary.length > 0 && (
+                    {/* Tax calculations */}
+                    {taxCalculations.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par type et taux:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {invoiceTaxSummary.map((calc, index) => (
+                          {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>

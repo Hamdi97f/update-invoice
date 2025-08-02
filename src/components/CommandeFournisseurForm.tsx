@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart 
 import { Fournisseur, Produit, LigneDocument, CommandeFournisseur, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateProductTaxes, aggregateInvoiceTaxes, formatTaxSummaryForDisplay, getDefaultProductTaxes } from '../utils/productTaxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import FournisseurForm from './FournisseurForm';
@@ -31,7 +31,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [invoiceTaxSummary, setInvoiceTaxSummary] = useState<any[]>([]);
+  const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
   
   // Search states
   const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
@@ -68,7 +68,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         setSelectedFournisseur(commande.fournisseur);
         setFournisseurSearchTerm(commande.fournisseur.nom);
         setLignes(commande.lignes);
-        setInvoiceTaxSummary(commande.taxes || []);
+        setTaxCalculations(commande.taxes || []);
       } else {
         generateNumero();
         // Reset form for new commande
@@ -83,7 +83,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         setSelectedFournisseur(null);
         setFournisseurSearchTerm('');
         setLignes([]);
-        setInvoiceTaxSummary([]);
+        setTaxCalculations([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -110,11 +110,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    if (lignes.length > 0) {
-      recalculateAllTaxes();
-    } else {
-      setInvoiceTaxSummary([]);
-    }
+    recalculateInvoiceTaxes();
   }, [lignes, taxes]);
 
   const loadFournisseurs = async () => {
@@ -195,32 +191,35 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     }
   };
 
-  const recalculateAllTaxes = () => {
-    // Step 1: Calculate taxes for each product line
+  const recalculateInvoiceTaxes = () => {
+    if (lignes.length === 0) {
+      setTaxCalculations([]);
+      return;
+    }
+
+    // Recalculate taxes for each line based on product's tax rate
     const updatedLignes = lignes.map(ligne => {
-      // Get default taxes for this product if not already set
-      let productTaxes = ligne.productTaxes;
-      if (!productTaxes || productTaxes.length === 0) {
-        productTaxes = getDefaultProductTaxes(taxes, 'commandesFournisseur', ligne.produit.tva);
-      }
-      
-      // Calculate product-level taxes (percentage only)
-      const productTaxResult = calculateProductTaxes(ligne.montantHT, productTaxes);
+      const productTaxResult = calculateProductTaxes(
+        ligne.montantHT,
+        ligne.produit.tva,
+        taxes,
+        'commandesFournisseur'
+      );
 
       return {
         ...ligne,
-        productTaxes,
-        productTaxResults: productTaxResult.productTaxResults,
-        montantTTC: productTaxResult.productTTC
+        taxes: productTaxResult.taxes,
+        taxBreakdown: productTaxResult.taxBreakdown,
+        montantTTC: productTaxResult.totalTTC
       };
     });
 
     setLignes(updatedLignes);
 
-    // Step 2: Calculate invoice-level taxes
-    const invoiceTaxResult = calculateInvoiceTaxes(updatedLignes, taxes);
-    const formattedTaxes = formatInvoiceTaxSummary(invoiceTaxResult);
-    setInvoiceTaxSummary(formattedTaxes);
+    // Aggregate taxes across all lines
+    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
+    setTaxCalculations(formattedTaxes);
   };
 
   // Filter fournisseurs based on search term
@@ -262,11 +261,10 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       const ligne = newLignes[existingLineIndex];
       const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
       ligne.montantHT = montantHT;
+      ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
       
       setLignes(newLignes);
     } else {
-      const defaultProductTaxes = getDefaultProductTaxes(taxes, 'commandesFournisseur', produit.tva);
-      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
@@ -274,9 +272,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT: produit.prixUnitaire,
-        montantTTC: produit.prixUnitaire,
-        productTaxes: defaultProductTaxes,
-        productTaxResults: []
+        montantTTC: calculateTTC(produit.prixUnitaire, produit.tva)
       };
       setLignes([...lignes, newLigne]);
     }
@@ -301,6 +297,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
+    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
 
     setLignes(newLignes);
   };
@@ -310,12 +307,13 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   };
 
   const calculateTotals = () => {
-    // Calculate using new tax system
-    const invoiceTaxResult = calculateInvoiceTaxes(lignes, taxes);
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    const totalHT = calculateInvoiceTotalHT(lignes);
-    const totalTaxes = invoiceTaxResult.totalAllTaxes;
-    const totalTTC = invoiceTaxResult.invoiceTotalTTC;
+    // Aggregate taxes from all product lines
+    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    
+    // Calculate total TTC as sum of HT + taxes
+    const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };
   };
@@ -338,8 +336,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       fournisseur: selectedFournisseur,
       lignes,
       totalHT,
-      totalTVA: 0, // Legacy field
-      taxes: invoiceTaxSummary,
+      totalTVA: 0, // Set to 0 as we're not using product TVA
+      taxes: taxCalculations,
       totalTaxes,
       totalTTC,
       statut: formData.statut,
@@ -818,14 +816,15 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {invoiceTaxSummary.length > 0 && (
+                    {/* Tax calculations */}
+                    {taxCalculations.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par type et taux:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {invoiceTaxSummary.map((calc, index) => (
+                          {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>
