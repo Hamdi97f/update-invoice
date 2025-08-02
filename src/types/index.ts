@@ -49,8 +49,8 @@ export interface ProductTax {
   id: string;
   nom: string;
   type: 'percentage' | 'fixed';
-  valeur: number;
-  calculationBase: 'totalHT' | 'totalHTWithPreviousTaxes';
+  taux: number;
+  base: 'HT' | 'HT_plus_taxes_precedentes';
   ordre: number;
 }
 
@@ -62,16 +62,23 @@ export interface LigneDocument {
   remise: number;
   montantHT: number;
   montantTTC: number;
-  taxes?: ProductTax[];
-  taxBreakdown?: { [key: string]: number }; // Tax name -> amount
+  taxes: ProductTax[];
+  taxesCalculees: { [key: string]: number }; // Tax name+rate -> amount
 }
 
-export interface TaxCalculation {
-  taxId?: string;
+export interface TaxeCalculee {
   nom: string;
-  rate?: number; // For aggregated taxes by rate
-  base?: number;
+  taux?: number;
   montant: number;
+  type: 'percentage' | 'fixed';
+}
+
+export interface TaxeFixe {
+  id: string;
+  nom: string;
+  valeur: number;
+  base: 'totalHT' | 'totalTTC';
+  actif: boolean;
 }
 
 export interface Facture {
@@ -82,9 +89,10 @@ export interface Facture {
   client: Client;
   lignes: LigneDocument[];
   totalHT: number;
-  totalTVA: number;
-  taxes: TaxCalculation[];
-  totalTaxes: number;
+  taxesPercentage: TaxeCalculee[];
+  taxesFixes: TaxeCalculee[];
+  totalTaxesPercentage: number;
+  totalTaxesFixes: number;
   totalTTC: number;
   statut: 'brouillon' | 'envoyee' | 'payee' | 'annulee';
   notes?: string;
@@ -98,9 +106,10 @@ export interface Devis {
   client: Client;
   lignes: LigneDocument[];
   totalHT: number;
-  totalTVA: number;
-  taxes: TaxCalculation[];
-  totalTaxes: number;
+  taxesPercentage: TaxeCalculee[];
+  taxesFixes: TaxeCalculee[];
+  totalTaxesPercentage: number;
+  totalTaxesFixes: number;
   totalTTC: number;
   statut: 'brouillon' | 'envoye' | 'accepte' | 'refuse' | 'expire';
   notes?: string;
@@ -116,10 +125,11 @@ export interface BonLivraison {
   factureId?: string;
   notes?: string;
   totalHT?: number;
-  totalTVA?: number;
+  taxesPercentage?: TaxeCalculee[];
+  taxesFixes?: TaxeCalculee[];
+  totalTaxesPercentage?: number;
+  totalTaxesFixes?: number;
   totalTTC?: number;
-  taxes?: TaxCalculation[];
-  totalTaxes?: number;
 }
 
 export interface CommandeFournisseur {
@@ -130,9 +140,10 @@ export interface CommandeFournisseur {
   fournisseur: Fournisseur;
   lignes: LigneDocument[];
   totalHT: number;
-  totalTVA: number;
-  taxes: TaxCalculation[];
-  totalTaxes: number;
+  taxesPercentage: TaxeCalculee[];
+  taxesFixes: TaxeCalculee[];
+  totalTaxesPercentage: number;
+  totalTaxesFixes: number;
   totalTTC: number;
   statut: 'brouillon' | 'envoyee' | 'confirmee' | 'recue' | 'annulee';
   notes?: string;

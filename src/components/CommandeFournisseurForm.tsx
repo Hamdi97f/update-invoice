@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart } from 'lucide-react';
-import { Fournisseur, Produit, LigneDocument, CommandeFournisseur, Tax, TaxCalculation } from '../types';
+import { Fournisseur, Produit, LigneDocument, CommandeFournisseur, TaxeCalculee } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
+import { 
+  calculerTaxesProduit, 
+  agregerTaxesProduits, 
+  formaterTaxesPourAffichage,
+  creerTaxesDefautProduit 
+} from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import FournisseurForm from './FournisseurForm';
@@ -30,8 +35,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const [produits, setProduits] = useState<Produit[]>([]);
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
-  const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
+  const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
   
   // Search states
   const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
@@ -54,7 +58,6 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     if (isOpen && isReady) {
       loadFournisseurs();
       loadProduits();
-      loadTaxes();
       
       if (commande) {
         setFormData({
@@ -68,7 +71,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         setSelectedFournisseur(commande.fournisseur);
         setFournisseurSearchTerm(commande.fournisseur.nom);
         setLignes(commande.lignes);
-        setTaxCalculations(commande.taxes || []);
+        setTaxesPercentage(commande.taxesPercentage || []);
       } else {
         generateNumero();
         // Reset form for new commande
@@ -83,7 +86,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         setSelectedFournisseur(null);
         setFournisseurSearchTerm('');
         setLignes([]);
-        setTaxCalculations([]);
+        setTaxesPercentage([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -110,8 +113,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculateInvoiceTaxes();
-  }, [lignes, taxes]);
+    recalculerTaxesCommande();
+  }, [lignes]);
 
   const loadFournisseurs = async () => {
     if (!isReady) return;
@@ -167,59 +170,37 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
-      setTaxes(loadedTaxes);
-    } catch (error) {
-      console.error('Error loading taxes:', error);
-    }
-  };
-
-  const generateNumero = async () => {
-    if (!isReady) return;
-    
-    try {
-      const numero = await getNextDocumentNumber('commandesFournisseur', isElectron, query);
-      setFormData(prev => ({ ...prev, numero }));
-    } catch (error) {
-      console.error('Error generating numero:', error);
-      // Fallback to simple numbering
-      const year = new Date().getFullYear();
-      const count = Math.floor(Math.random() * 1000) + 1;
-      setFormData(prev => ({
-        ...prev,
-        numero: `CF-${year}-${String(count).padStart(3, '0')}`
-      }));
-    }
-  };
-
-  const recalculateInvoiceTaxes = () => {
+  const recalculerTaxesCommande = () => {
     if (lignes.length === 0) {
-      setTaxCalculations([]);
+      setTaxesPercentage([]);
       return;
     }
 
-    // Recalculate taxes for each line based on product's tax rate
+    // Recalculer les taxes pour chaque ligne
     const updatedLignes = lignes.map(ligne => {
-      const productTaxResult = calculateProductTaxes(
+      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
+        ? ligne.taxes 
+        : creerTaxesDefautProduit(ligne.produit.tva);
+      
+      const resultatTaxes = calculerTaxesProduit(
         ligne.montantHT,
-        ligne.produit.tva,
-        taxes,
-        'commandesFournisseur'
+        taxesProduit
       );
 
       return {
         ...ligne,
-        taxes: productTaxResult.taxes,
-        taxBreakdown: productTaxResult.taxBreakdown,
-        montantTTC: productTaxResult.totalTTC
+        taxes: taxesProduit,
+        taxesCalculees: resultatTaxes.taxesCalculees,
+        montantTTC: resultatTaxes.montantTTC
       };
     });
 
     setLignes(updatedLignes);
 
-    // Aggregate taxes across all lines
-    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
-    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
-    setTaxCalculations(formattedTaxes);
+    // Agréger les taxes de tous les produits
+    const { taxesAgregees } = agregerTaxesProduits(updatedLignes);
+    const taxesFormatees = formaterTaxesPourAffichage(taxesAgregees);
+    setTaxesPercentage(taxesFormatees);
   };
 
   // Filter fournisseurs based on search term
@@ -309,13 +290,13 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Aggregate taxes from all product lines
-    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    // Agréger les taxes des produits
+    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
     
-    // Calculate total TTC as sum of HT + taxes
-    const totalTTC = totalHT + totalTaxes;
+    // Pour les commandes fournisseur, pas de taxes fixes
+    const totalTTC = totalHT + totalTaxesPercentage;
     
-    return { totalHT, totalTaxes, totalTTC };
+    return { totalHT, totalTaxesPercentage, totalTTC };
   };
 
   const handleSave = async () => {
@@ -326,7 +307,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       return;
     }
 
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
     const commandeData: CommandeFournisseur = {
       id: commande?.id || uuidv4(),
@@ -336,9 +317,10 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       fournisseur: selectedFournisseur,
       lignes,
       totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
-      taxes: taxCalculations,
-      totalTaxes,
+      taxesPercentage,
+      taxesFixes: [],
+      totalTaxesPercentage,
+      totalTaxesFixes: 0,
       totalTTC,
       statut: formData.statut,
       notes: formData.notes
@@ -348,8 +330,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       try {
         await query(
           `INSERT OR REPLACE INTO commandes_fournisseur 
-           (id, numero, date, dateReception, fournisseurId, totalHT, totalTVA, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, dateReception, fournisseurId, totalHT, totalTTC, statut, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             commandeData.id,
             commandeData.numero,
@@ -357,7 +339,6 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
             commandeData.dateReception.toISOString(),
             commandeData.fournisseur.id,
             commandeData.totalHT,
-            commandeData.totalTVA,
             commandeData.totalTTC,
             commandeData.statut,
             commandeData.notes
@@ -441,7 +422,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -816,24 +797,25 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax calculations */}
-                    {taxCalculations.length > 0 && (
+                    {taxesPercentage.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par produit:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxesPercentage.map((taxe, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{calc.nom}:</span>
-                              <span>{formatCurrency(calc.montant)}</span>
+                              <span className="text-gray-600">
+                                {taxe.nom} {taxe.taux ? `${taxe.taux}%` : ''}:
+                              </span>
+                              <span>{formatCurrency(taxe.montant)}</span>
                             </div>
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
+                          <span>{formatCurrency(totalTaxesPercentage)}</span>
                         </div>
                       </>
                     )}

@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart, Store } from 'lucide-react';
-import { Client, Produit, LigneDocument, Facture, Tax, TaxCalculation } from '../types';
+import { Client, Produit, LigneDocument, Facture, TaxeCalculee, TaxeFixe } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
+import { 
+  calculerTaxesProduit, 
+  agregerTaxesProduits, 
+  calculerTaxesFixesFacture,
+  formaterTaxesPourAffichage,
+  creerTaxesDefautProduit 
+} from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -39,8 +45,9 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const [produits, setProduits] = useState<Produit[]>([]);
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
+  const [taxesFixesConfig, setTaxesFixesConfig] = useState<TaxeFixe[]>([]);
+  const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
+  const [taxesFixes, setTaxesFixes] = useState<TaxeCalculee[]>([]);
   const [useEcheanceDate, setUseEcheanceDate] = useState(true);
   
   // Search states
@@ -64,7 +71,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     if (isOpen && isReady) {
       loadClients();
       loadProduits();
-      loadTaxes();
+      loadTaxesFixesConfig();
       loadInvoiceSettings();
       
       if (facture) {
@@ -79,7 +86,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
         setSelectedClient(facture.client);
         setClientSearchTerm(facture.client.nom);
         setLignes(facture.lignes);
-        setTaxCalculations(facture.taxes || []);
+        setTaxesPercentage(facture.taxesPercentage || []);
+        setTaxesFixes(facture.taxesFixes || []);
       } else if (isAvoir && originalFacture) {
         // For avoir, use original invoice data but with negative quantities
         generateAvoirNumero(originalFacture.numero);
@@ -100,18 +108,28 @@ const FactureForm: React.FC<FactureFormProps> = ({
           id: uuidv4(),  // Generate new IDs for the avoir lines
           quantite: -ligne.quantite,  // Negative quantity
           montantHT: -ligne.montantHT,  // Negative amounts
-          montantTTC: -ligne.montantTTC
+          montantTTC: -ligne.montantTTC,
+          taxes: ligne.taxes || [],
+          taxesCalculees: Object.fromEntries(
+            Object.entries(ligne.taxesCalculees || {}).map(([key, value]) => [key, -value])
+          )
         }));
         
         setLignes(avoirLignes);
         
-        // Create negative tax calculations
-        const avoirTaxes = originalFacture.taxes.map(tax => ({
+        // Create negative taxes
+        const avoirTaxesPercentage = (originalFacture.taxesPercentage || []).map(tax => ({
           ...tax,
-          montant: -tax.montant  // Negative tax amount
+          montant: -tax.montant
         }));
         
-        setTaxCalculations(avoirTaxes);
+        const avoirTaxesFixes = (originalFacture.taxesFixes || []).map(tax => ({
+          ...tax,
+          montant: -tax.montant
+        }));
+        
+        setTaxesPercentage(avoirTaxesPercentage);
+        setTaxesFixes(avoirTaxesFixes);
       } else {
         generateNumero();
         // Reset form for new invoice
@@ -126,7 +144,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
         setSelectedClient(null);
         setClientSearchTerm('');
         setLignes([]);
-        setTaxCalculations([]);
+        setTaxesPercentage([]);
+        setTaxesFixes([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -153,8 +172,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculateInvoiceTaxes();
-  }, [lignes, taxes]);
+    recalculerTaxesFacture();
+  }, [lignes, taxesFixesConfig]);
 
   const loadClients = async () => {
     if (!isReady) return;
@@ -192,27 +211,33 @@ const FactureForm: React.FC<FactureFormProps> = ({
     }
   };
 
-  const loadTaxes = async () => {
+  const loadTaxesFixesConfig = async () => {
     if (!isReady) return;
     
     if (!isElectron) {
-      const savedTaxes = localStorage.getItem('taxes');
-      if (savedTaxes) {
-        setTaxes(JSON.parse(savedTaxes));
+      const savedTaxesFixes = localStorage.getItem('taxesFixesConfig');
+      if (savedTaxesFixes) {
+        setTaxesFixesConfig(JSON.parse(savedTaxesFixes));
       }
       return;
     }
 
     try {
-      const result = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
-      const loadedTaxes = result.map((tax: any) => ({
-        ...tax,
-        applicableDocuments: JSON.parse(tax.applicableDocuments),
-        actif: Boolean(tax.actif)
-      }));
-      setTaxes(loadedTaxes);
+      // Créer la table des taxes fixes si elle n'existe pas
+      await query(`
+        CREATE TABLE IF NOT EXISTS taxes_fixes (
+          id TEXT PRIMARY KEY,
+          nom TEXT NOT NULL,
+          valeur REAL NOT NULL,
+          base TEXT NOT NULL,
+          actif BOOLEAN DEFAULT 1
+        )
+      `);
+      
+      const result = await query('SELECT * FROM taxes_fixes WHERE actif = 1');
+      setTaxesFixesConfig(result);
     } catch (error) {
-      console.error('Error loading taxes:', error);
+      console.error('Error loading taxes fixes config:', error);
     }
   };
 
@@ -276,35 +301,50 @@ const FactureForm: React.FC<FactureFormProps> = ({
     }
   };
 
-  const recalculateInvoiceTaxes = () => {
+  const recalculerTaxesFacture = () => {
     if (lignes.length === 0) {
-      setTaxCalculations([]);
+      setTaxesPercentage([]);
+      setTaxesFixes([]);
       return;
     }
 
-    // Recalculate taxes for each line based on product's tax rate
+    // Recalculer les taxes pour chaque ligne
     const updatedLignes = lignes.map(ligne => {
-      const productTaxResult = calculateProductTaxes(
+      // Créer les taxes par défaut basées sur le taux TVA du produit
+      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
+        ? ligne.taxes 
+        : creerTaxesDefautProduit(ligne.produit.tva);
+      
+      const resultatTaxes = calculerTaxesProduit(
         ligne.montantHT,
-        ligne.produit.tva,
-        taxes,
-        'factures'
+        taxesProduit
       );
 
       return {
         ...ligne,
-        taxes: productTaxResult.taxes,
-        taxBreakdown: productTaxResult.taxBreakdown,
-        montantTTC: productTaxResult.totalTTC
+        taxes: taxesProduit,
+        taxesCalculees: resultatTaxes.taxesCalculees,
+        montantTTC: resultatTaxes.montantTTC
       };
     });
 
     setLignes(updatedLignes);
 
-    // Aggregate taxes across all lines
-    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
-    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
-    setTaxCalculations(formattedTaxes);
+    // Agréger les taxes percentage de tous les produits
+    const { taxesAgregees, totalTaxesPercentage } = agregerTaxesProduits(updatedLignes);
+    const taxesPercentageFormatees = formaterTaxesPourAffichage(taxesAgregees);
+    setTaxesPercentage(taxesPercentageFormatees);
+    
+    // Calculer les taxes fixes (seulement pour les factures)
+    const totalHT = updatedLignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    const totalTTCProduits = totalHT + totalTaxesPercentage;
+    
+    const { taxesFixesCalculees, totalTaxesFixes } = calculerTaxesFixesFacture(
+      totalHT,
+      totalTTCProduits,
+      taxesFixesConfig
+    );
+    setTaxesFixes(taxesFixesCalculees);
   };
 
   // Filter clients based on search term
@@ -349,21 +389,36 @@ const FactureForm: React.FC<FactureFormProps> = ({
       
       // Recalculate amounts
       const ligne = newLignes[existingLineIndex];
-      const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
+      const montantHT = ligne.quantite * ligne.prixUnitaire;
       ligne.montantHT = montantHT;
-      ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+      
+      // Recalculer les taxes pour cette ligne
+      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
+        ? ligne.taxes 
+        : creerTaxesDefautProduit(ligne.produit.tva);
+      
+      const resultatTaxes = calculerTaxesProduit(montantHT, taxesProduit);
+      ligne.taxes = taxesProduit;
+      ligne.taxesCalculees = resultatTaxes.taxesCalculees;
+      ligne.montantTTC = resultatTaxes.montantTTC;
       
       setLignes(newLignes);
     } else {
       // Add new line
+      const montantHT = produit.prixUnitaire;
+      const taxesProduit = creerTaxesDefautProduit(produit.tva);
+      const resultatTaxes = calculerTaxesProduit(montantHT, taxesProduit);
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: produit.prixUnitaire,
-        montantTTC: calculateTTC(produit.prixUnitaire, produit.tva)
+        montantHT,
+        montantTTC: resultatTaxes.montantTTC,
+        taxes: taxesProduit,
+        taxesCalculees: resultatTaxes.taxesCalculees
       };
       setLignes([...lignes, newLigne]);
     }
@@ -382,35 +437,32 @@ const FactureForm: React.FC<FactureFormProps> = ({
       if (produit) {
         ligne.produit = produit;
         ligne.prixUnitaire = produit.prixUnitaire;
+        // Recréer les taxes par défaut pour le nouveau produit
+        ligne.taxes = creerTaxesDefautProduit(produit.tva);
       }
     } else {
       (ligne as any)[field] = value;
     }
 
-    // Recalculate amounts HT
+    // Recalculer les montants
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
     
-    // Calculate taxes for this specific product
-    const productTaxResult = calculateProductTaxes(
+    // Calculer les taxes pour ce produit spécifique
+    const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
+      ? ligne.taxes 
+      : creerTaxesDefautProduit(ligne.produit.tva);
+    
+    const resultatTaxes = calculerTaxesProduit(
       montantHT,
-      ligne.produit.tva,
-      taxes,
-      'factures'
+      taxesProduit
     );
     
-    ligne.taxes = productTaxResult.taxes;
-    ligne.taxBreakdown = productTaxResult.taxBreakdown;
-    ligne.montantTTC = productTaxResult.totalTTC;
+    ligne.taxes = taxesProduit;
+    ligne.taxesCalculees = resultatTaxes.taxesCalculees;
+    ligne.montantTTC = resultatTaxes.montantTTC;
 
     setLignes(newLignes);
-    
-    // Recalculate invoice-level taxes
-    setTimeout(() => {
-      const { aggregatedTaxes } = aggregateInvoiceTaxes(newLignes);
-      const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
-      setTaxCalculations(formattedTaxes);
-    }, 0);
   };
 
   const handleRemoveLigne = (index: number) => {
@@ -420,12 +472,25 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Aggregate taxes from all product lines
-    const { totalTaxes } = aggregateInvoiceTaxes(lignes);
+    // Agréger les taxes percentage des produits
+    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
     
-    const totalTTC = totalHT + totalTaxes;
+    // Calculer les taxes fixes
+    const totalTTCProduits = totalHT + totalTaxesPercentage;
+    const { totalTaxesFixes } = calculerTaxesFixesFacture(
+      totalHT,
+      totalTTCProduits,
+      taxesFixesConfig
+    );
     
-    return { totalHT, totalTaxes, totalTTC };
+    const totalTTC = totalHT + totalTaxesPercentage + totalTaxesFixes;
+    
+    return { 
+      totalHT, 
+      totalTaxesPercentage, 
+      totalTaxesFixes, 
+      totalTTC 
+    };
   };
 
   const handleSave = async () => {
@@ -436,7 +501,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       return;
     }
 
-    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+    const { totalHT, totalTaxesPercentage, totalTaxesFixes, totalTTC } = calculateTotals();
 
     const factureData: Facture = {
       id: facture?.id || uuidv4(),
@@ -446,36 +511,22 @@ const FactureForm: React.FC<FactureFormProps> = ({
       client: selectedClient,
       lignes,
       totalHT,
-      totalTVA: 0, // Legacy field, kept for compatibility
-      taxes: taxCalculations,
-      totalTaxes,
+      taxesPercentage,
+      taxesFixes,
+      totalTaxesPercentage,
+      totalTaxesFixes,
       totalTTC,
       statut: formData.statut,
-      montantTTC: produit.prixUnitaire,
-      taxes: [],
-      taxBreakdown: {}
+      notes: formData.notes
     };
-    
-    // Calculate taxes for this new product
-    const productTaxResult = calculateProductTaxes(
-      newLigne.montantHT,
-      produit.tva,
-      taxes,
-      'factures'
-    );
-    
-    newLigne.taxes = productTaxResult.taxes;
-    newLigne.taxBreakdown = productTaxResult.taxBreakdown;
-    newLigne.montantTTC = productTaxResult.totalTTC;
-    
 
     if (isElectron) {
       try {
         // Save facture
         await query(
           `INSERT OR REPLACE INTO factures 
-           (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, numero, date, dateEcheance, clientId, totalHT, totalTTC, statut, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             factureData.id,
             factureData.numero,
@@ -483,7 +534,6 @@ const FactureForm: React.FC<FactureFormProps> = ({
             factureData.dateEcheance.toISOString(),
             factureData.client.id,
             factureData.totalHT,
-            factureData.totalTVA,
             factureData.totalTTC,
             factureData.statut,
             factureData.notes
@@ -565,7 +615,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxesPercentage, totalTaxesFixes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -918,7 +968,10 @@ const FactureForm: React.FC<FactureFormProps> = ({
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
-                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
+                            {ligne.taxes && ligne.taxes.length > 0 
+                              ? ligne.taxes.map(t => `${t.nom} ${t.taux}%`).join(', ')
+                              : `${ligne.produit.tva}%`
+                            }
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-blue-600">
                             {formatCurrency(ligne.montantTTC)}
@@ -964,26 +1017,49 @@ const FactureForm: React.FC<FactureFormProps> = ({
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax calculations */}
-                    {taxCalculations.length > 0 && (
+                    {/* Taxes percentage (par produit) */}
+                    {taxesPercentage.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par produit:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxesPercentage.map((taxe, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{calc.nom}:</span>
-                              <span>{formatCurrency(calc.montant)}</span>
+                              <span className="text-gray-600">
+                                {taxe.nom} {taxe.taux ? `${taxe.taux}%` : ''}:
+                              </span>
+                              <span>{formatCurrency(taxe.montant)}</span>
                             </div>
                           ))}
                         </div>
-                        <div className="flex justify-between text-sm font-medium">
-                          <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
+                      </>
+                    )}
+                    
+                    {/* Taxes fixes */}
+                    {taxesFixes.length > 0 && (
+                      <>
+                        <div className="border-t pt-2">
+                          <div className="flex items-center mb-2">
+                            <Calculator className="w-4 h-4 mr-1 text-gray-600" />
+                            <span className="text-sm font-medium text-gray-700">Taxes fixes:</span>
+                          </div>
+                          {taxesFixes.map((taxe, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span className="text-gray-600">{taxe.nom}:</span>
+                              <span>{formatCurrency(taxe.montant)}</span>
+                            </div>
+                          ))}
                         </div>
                       </>
+                    )}
+                    
+                    {(taxesPercentage.length > 0 || taxesFixes.length > 0) && (
+                      <div className="flex justify-between text-sm font-medium border-t pt-2">
+                        <span>Total taxes:</span>
+                        <span>{formatCurrency(totalTaxesPercentage + totalTaxesFixes)}</span>
+                      </div>
                     )}
                     
                     <div className="flex justify-between font-bold text-lg border-t pt-2">
