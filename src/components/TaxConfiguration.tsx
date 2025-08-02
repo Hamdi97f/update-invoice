@@ -57,6 +57,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
       const result = await query('SELECT * FROM taxes ORDER BY ordre ASC');
       const loadedTaxes = result.map((tax: any) => ({
         ...tax,
+        rateType: tax.rateType || tax.type, // Handle both old and new field names
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
@@ -81,12 +82,12 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
       // Insert updated taxes
       for (const tax of updatedTaxes) {
         await query(
-          `INSERT INTO taxes (id, nom, type, valeur, calculationBase, applicableDocuments, ordre, actif)
+          `INSERT INTO taxes (id, nom, rateType, valeur, calculationBase, applicableDocuments, ordre, actif)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             tax.id,
             tax.nom,
-            tax.type,
+            tax.rateType,
             tax.valeur,
             tax.calculationBase,
             JSON.stringify(tax.applicableDocuments),
@@ -122,7 +123,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     const taxData: Tax = {
       id: editingTax?.id || uuidv4(),
       nom: formData.nom.trim(),
-      rateType: formData.type,
+      type: formData.type,
       valeur: formData.valeur,
       calculationBase: formData.calculationBase,
       applicableDocuments: formData.applicableDocuments,
@@ -155,7 +156,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     setEditingTax(tax);
     setFormData({
       nom: tax.nom,
-      type: tax.rateType,
+      type: tax.type,
       valeur: tax.valeur,
       calculationBase: tax.calculationBase,
       applicableDocuments: tax.applicableDocuments,
@@ -329,10 +330,10 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                     {tax.nom}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {tax.rateType === 'percentage' ? 'Pourcentage' : 'Montant fixe'}
+                    {tax.type === 'percentage' ? 'Pourcentage' : 'Montant fixe'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {tax.rateType === 'percentage' ? `${tax.valeur}%` : `${tax.valeur.toFixed(3)} TND`}
+                    {tax.type === 'percentage' ? `${tax.valeur}%` : `${tax.valeur.toFixed(3)} TND`}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {tax.calculationBase === 'totalHT' ? 'Total HT' : 'Total HT + taxes précédentes'}
