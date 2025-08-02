@@ -36,6 +36,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
+  const [taxes, setTaxes] = useState<any[]>([]);
+  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -69,6 +71,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     if (isOpen && isReady) {
       loadClients();
       loadProduits();
+      loadTaxes();
       
       if (bonLivraison) {
         setFormData({
@@ -181,6 +184,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
+      setTaxes(loadedTaxes);
     } catch (error) {
       console.error('Error loading taxes:', error);
     }
@@ -329,7 +333,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       return;
     }
 
-    const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+    // Calculate totals for display purposes
+    const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
     const bonLivraisonData: BonLivraison = {
       id: bonLivraison?.id || uuidv4(),
@@ -341,11 +346,10 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       factureId: formData.factureId || undefined,
       notes: formData.notes,
       totalHT,
-      taxesPercentage,
-      taxesFixes: [],
-      totalTaxesPercentage,
-      totalTaxesFixes: 0,
+      totalTVA: 0, // Set to 0 as we're not using product TVA
       totalTTC,
+      taxes: taxCalculations,
+      totalTaxes
     };
 
     if (isElectron) {
@@ -363,7 +367,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
             bonLivraisonData.factureId || null,
             bonLivraisonData.notes,
             bonLivraisonData.totalHT,
-            bonLivraisonData.totalTaxesPercentage,
+            bonLivraisonData.totalTVA,
             bonLivraisonData.totalTTC
           ]
         );
@@ -425,7 +429,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -786,14 +790,14 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                     </div>
                     
                     {/* Tax calculations */}
-                    {taxesPercentage.length > 0 && (
+                    {taxCalculations.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
                             <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
                           </div>
-                          {taxesPercentage.map((calc, index) => (
+                          {taxCalculations.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>
@@ -802,7 +806,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxesPercentage)}</span>
+                          <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                       </>
                     )}
