@@ -48,10 +48,9 @@ export interface Tax {
 export interface ProductTax {
   id: string;
   nom: string;
-  type: 'percentage' | 'fixed';
-  valeur: number;
-  calculationBase: 'totalHT' | 'totalHTWithPreviousTaxes';
-  ordre: number;
+  rate: number; // percentage rate (e.g., 19, 7, 1)
+  base: 'HT' | 'HT_PLUS_PREVIOUS'; // calculation base
+  order: number; // calculation order for cascade
 }
 
 export interface LigneDocument {
@@ -62,8 +61,8 @@ export interface LigneDocument {
   remise: number;
   montantHT: number;
   montantTTC: number;
-  taxes?: ProductTax[];
-  taxBreakdown?: { [key: string]: number }; // Tax name -> amount
+  productTaxes: ProductTax[]; // List of taxes for this product
+  taxCalculations: { [key: string]: number }; // Tax name+rate -> calculated amount
 }
 
 export interface TaxCalculation {

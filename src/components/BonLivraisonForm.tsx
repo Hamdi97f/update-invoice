@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Save, User, Package, Search, Truck, Store, Calculator 
 import { Client, Produit, LigneDocument, BonLivraison, Tax, TaxCalculation } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { calculateProductTaxes, aggregateInvoiceTaxes, formatAggregatedTaxes } from '../utils/productTaxCalculator';
+import { calculateProductTaxes, aggregateInvoiceTaxes, formatTaxGroupsForDisplay, getDefaultProductTaxes } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -31,7 +31,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<TaxCalculation[]>([]);
+  const [invoiceTaxSummary, setInvoiceTaxSummary] = useState<any[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -68,7 +68,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         setSelectedClient(bonLivraison.client);
         setClientSearchTerm(bonLivraison.client.nom);
         setLignes(bonLivraison.lignes);
-        setTaxCalculations(bonLivraison.taxes || []);
+        setInvoiceTaxSummary(bonLivraison.taxes || []);
       } else {
         generateNumero();
         // Reset form for new bon de livraison
@@ -83,7 +83,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         setSelectedClient(null);
         setClientSearchTerm('');
         setLignes([]);
-        setTaxCalculations([]);
+        setInvoiceTaxSummary([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -110,7 +110,11 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculateInvoiceTaxes();
+    if (lignes.length > 0) {
+      recalculateInvoiceTaxes();
+    } else {
+      setInvoiceTaxSummary([]);
+    }
   }, [lignes, taxes]);
 
   const loadClients = async () => {
@@ -192,34 +196,33 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const recalculateInvoiceTaxes = () => {
-    if (lignes.length === 0) {
-      setTaxCalculations([]);
-      return;
-    }
-
-    // Recalculate taxes for each line based on product's tax rate
+    // Calculate taxes for each product line
     const updatedLignes = lignes.map(ligne => {
-      const productTaxResult = calculateProductTaxes(
-        ligne.montantHT,
-        ligne.produit.tva,
-        taxes,
-        'bonsLivraison'
-      );
+      // Get default taxes for this product based on global settings
+      const defaultTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', ligne.produit.tva);
+      
+      // Use existing product taxes or default ones
+      const productTaxes = ligne.productTaxes && ligne.productTaxes.length > 0 
+        ? ligne.productTaxes 
+        : defaultTaxes;
+      
+      // Calculate taxes for this product
+      const taxResult = calculateProductTaxes(ligne.montantHT, productTaxes);
 
       return {
         ...ligne,
-        taxes: productTaxResult.taxes,
-        taxBreakdown: productTaxResult.taxBreakdown,
-        montantTTC: productTaxResult.totalTTC
+        productTaxes: taxResult.productTaxes,
+        taxCalculations: taxResult.taxCalculations,
+        montantTTC: taxResult.totalTTC
       };
     });
 
     setLignes(updatedLignes);
 
-    // Aggregate taxes across all lines
-    const { aggregatedTaxes } = aggregateInvoiceTaxes(updatedLignes);
-    const formattedTaxes = formatAggregatedTaxes(aggregatedTaxes);
-    setTaxCalculations(formattedTaxes);
+    // Aggregate taxes from all product lines
+    const { taxGroups } = aggregateInvoiceTaxes(updatedLignes);
+    const formattedTaxes = formatTaxGroupsForDisplay(taxGroups);
+    setInvoiceTaxSummary(formattedTaxes);
   };
 
   // Filter clients based on search term
@@ -268,7 +271,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     } else {
       // For bon de livraison, include prices for display
       const montantHT = produit.prixUnitaire;
-      const montantTTC = calculateTTC(montantHT, produit.tva);
+      const defaultTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', produit.tva);
+      const taxResult = calculateProductTaxes(montantHT, defaultTaxes);
       
       const newLigne: LigneDocument = {
         id: uuidv4(),
@@ -277,7 +281,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT: montantHT,
-        montantTTC: montantTTC
+        montantTTC: taxResult.totalTTC,
+        productTaxes: taxResult.productTaxes,
+        taxCalculations: taxResult.taxCalculations
       };
       setLignes([...lignes, newLigne]);
     }
@@ -303,7 +309,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     // Calculate amounts for bon de livraison
     const montantHT = ligne.quantite * ligne.produit.prixUnitaire;
     ligne.montantHT = montantHT;
-    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
 
     setLignes(newLignes);
   };
@@ -313,12 +318,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const calculateTotals = () => {
-    const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
-    
-    // Aggregate taxes from all product lines
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     const { totalTaxes } = aggregateInvoiceTaxes(lignes);
-    
-    // Calculate total TTC as sum of HT + taxes
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, totalTTC };
@@ -345,9 +346,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       factureId: formData.factureId || undefined,
       notes: formData.notes,
       totalHT,
-      totalTVA: 0, // Set to 0 as we're not using product TVA
+      totalTVA: 0, // Legacy field
       totalTTC,
-      taxes: taxCalculations,
+      taxes: invoiceTaxSummary,
       totalTaxes
     };
 
@@ -788,15 +789,14 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax calculations */}
-                    {taxCalculations.length > 0 && (
+                    {invoiceTaxSummary.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par type et taux:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {invoiceTaxSummary.map((calc, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">{calc.nom}:</span>
                               <span>{formatCurrency(calc.montant)}</span>
