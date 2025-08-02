@@ -122,7 +122,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     const taxData: Tax = {
       id: editingTax?.id || uuidv4(),
       nom: formData.nom.trim(),
-      rateType: formData.rateType,
+      rateType: formData.type,
       valeur: formData.valeur,
       calculationBase: formData.calculationBase,
       applicableDocuments: formData.applicableDocuments,
@@ -146,6 +146,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
       setEditingTax(null);
       resetForm();
     } catch (error) {
+      console.error('Error saving tax:', error);
       alert('Erreur lors de la sauvegarde de la taxe');
     }
   };
@@ -154,7 +155,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
     setEditingTax(tax);
     setFormData({
       nom: tax.nom,
-      rateType: tax.rateType,
+      type: tax.rateType,
       valeur: tax.valeur,
       calculationBase: tax.calculationBase,
       applicableDocuments: tax.applicableDocuments,
@@ -222,7 +223,7 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
   const resetForm = () => {
     setFormData({
       nom: '',
-      rateType: 'percentage',
+      type: 'percentage',
       valeur: 0,
       calculationBase: 'totalHT',
       applicableDocuments: [],
@@ -424,8 +425,8 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                       Type de taxe *
                     </label>
                     <select
-                      value={formData.rateType}
-                      onChange={(e) => setFormData(prev => ({ ...prev, rateType: e.target.value as 'percentage' | 'fixed' }))}
+                      value={formData.type}
+                      onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'percentage' | 'fixed' }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="percentage">Pourcentage</option>
@@ -448,13 +449,13 @@ const TaxConfiguration: React.FC<TaxConfigurationProps> = ({ onTaxesChange }) =>
                         required
                       />
                       <span className="absolute right-3 top-2 text-gray-500 text-sm">
-                        {formData.rateType === 'percentage' ? '%' : 'TND'}
+                        {formData.type === 'percentage' ? '%' : 'TND'}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {formData.rateType === 'percentage' && (
+                {formData.type === 'percentage' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Base de calcul *
