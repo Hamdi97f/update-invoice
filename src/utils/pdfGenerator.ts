@@ -424,9 +424,9 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
-  // Show aggregated taxes by type and rate
+  // Show taxes using new tax system
   if (documentData.taxes && documentData.taxes.length > 0) {
-    // Use the taxes already calculated and stored in the document
+    // Display taxes in the order they were calculated
     documentData.taxes.forEach((tax: any) => {
       doc.text(`${tax.nom}:`, rightX - 50, currentY);
       doc.text(formatCurrency(tax.montant), rightX, currentY, { align: 'right' });

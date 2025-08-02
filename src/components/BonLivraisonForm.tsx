@@ -111,7 +111,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   // Recalculate taxes when lines change
   useEffect(() => {
     if (lignes.length > 0) {
-      recalculateInvoiceTaxes();
+      recalculateAllTaxes();
     } else {
       setInvoiceTaxSummary([]);
     }
@@ -195,35 +195,31 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     }
   };
 
-  const recalculateInvoiceTaxes = () => {
-    const appliedFixedTaxes = new Set<string>();
-    
-    // Calculate taxes for each product line
+  const recalculateAllTaxes = () => {
+    // Step 1: Calculate taxes for each product line
     const updatedLignes = lignes.map(ligne => {
-      // Get default taxes for this product based on global settings
-      const defaultTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', ligne.produit.tva);
+      // Get default taxes for this product if not already set
+      let productTaxes = ligne.productTaxes;
+      if (!productTaxes || productTaxes.length === 0) {
+        productTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', ligne.produit.tva);
+      }
       
-      // Use existing product taxes or default ones
-      const productTaxes = ligne.productTaxes && ligne.productTaxes.length > 0 
-        ? ligne.productTaxes 
-        : defaultTaxes;
-      
-      // Calculate taxes for this product
-      const taxResult = calculateProductTaxes(ligne.montantHT, productTaxes, appliedFixedTaxes);
+      // Calculate product-level taxes (percentage only)
+      const productTaxResult = calculateProductTaxes(ligne.montantHT, productTaxes);
 
       return {
         ...ligne,
-        productTaxes: taxResult.productTaxes,
-        taxCalculations: taxResult.taxCalculations,
-        montantTTC: taxResult.totalTTC
+        productTaxes,
+        productTaxResults: productTaxResult.productTaxResults,
+        montantTTC: productTaxResult.productTTC
       };
     });
 
     setLignes(updatedLignes);
 
-    // Aggregate taxes from all product lines
-    const { taxGroups, fixedTaxes } = aggregateInvoiceTaxes(updatedLignes, taxes);
-    const formattedTaxes = formatTaxSummaryForDisplay(taxGroups, fixedTaxes);
+    // Step 2: Calculate invoice-level taxes
+    const invoiceTaxResult = calculateInvoiceTaxes(updatedLignes, taxes);
+    const formattedTaxes = formatInvoiceTaxSummary(invoiceTaxResult);
     setInvoiceTaxSummary(formattedTaxes);
   };
 
@@ -273,6 +269,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       // For bon de livraison, include prices for display
       const montantHT = produit.prixUnitaire;
       
+      const defaultProductTaxes = getDefaultProductTaxes(taxes, 'bonsLivraison', produit.tva);
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
@@ -281,8 +279,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         remise: 0,
         montantHT: montantHT,
         montantTTC: montantHT,
-        productTaxes: getDefaultProductTaxes(taxes, 'bonsLivraison', produit.tva),
-        taxCalculations: []
+        productTaxes: defaultProductTaxes,
+        productTaxResults: []
       };
       setLignes([...lignes, newLigne]);
     }
@@ -317,9 +315,12 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const calculateTotals = () => {
-    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
-    const totalTaxes = totalTTC - totalHT;
+    // Calculate using new tax system
+    const invoiceTaxResult = calculateInvoiceTaxes(lignes, taxes);
+    
+    const totalHT = calculateInvoiceTotalHT(lignes);
+    const totalTaxes = invoiceTaxResult.totalAllTaxes;
+    const totalTTC = invoiceTaxResult.invoiceTotalTTC;
     
     return { totalHT, totalTaxes, totalTTC };
   };
