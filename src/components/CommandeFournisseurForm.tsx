@@ -170,6 +170,22 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         applicableDocuments: JSON.parse(tax.applicableDocuments),
         actif: Boolean(tax.actif)
       }));
+    } catch (error) {
+      console.error('Error loading taxes:', error);
+    }
+  };
+
+  const generateNumero = async () => {
+    if (!isReady) return;
+    
+    try {
+      const numero = await getNextDocumentNumber('CF', isElectron, query);
+      setFormData(prev => ({ ...prev, numero }));
+    } catch (error) {
+      console.error('Error generating numero:', error);
+    }
+  };
+
   const recalculerTaxesCommande = () => {
     if (lignes.length === 0) {
       setTaxesPercentage([]);
@@ -797,18 +813,17 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
+                    {/* Tax calculations */}
                     {taxesPercentage.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par produit:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes:</span>
                           </div>
                           {taxesPercentage.map((taxe, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {taxe.nom} {taxe.taux ? `${taxe.taux}%` : ''}:
-                              </span>
+                              <span className="text-gray-600">{taxe.nom}:</span>
                               <span>{formatCurrency(taxe.montant)}</span>
                             </div>
                           ))}
