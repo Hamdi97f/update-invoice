@@ -8,7 +8,7 @@ import {
   agregerTaxesProduits, 
   formaterTaxesPourAffichage,
   creerTaxesDefautProduit 
-} from '../utils/productTaxCalculator';
+} from '../utils/dynamicTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import FournisseurForm from './FournisseurForm';
