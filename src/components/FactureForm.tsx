@@ -9,7 +9,7 @@ import {
   calculerTaxesFixesFacture,
   formaterTaxesPourAffichage,
   creerTaxesDefautProduit 
-} from '../utils/dynamicTaxCalculator';
+} from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';

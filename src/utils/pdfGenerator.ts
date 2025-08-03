@@ -8,7 +8,6 @@ import { getCompanyInfo } from './numberGenerator';
 import { numberToWords } from './numberToWords';
 import { getCurrencySymbol, getCurrencyDecimals } from './currency';
 import { agregerTaxesProduits, creerTaxesDefautProduit, calculerTaxesProduit } from './productTaxCalculator';
-import { agregerTaxesProduits, creerTaxesDefautProduit, calculerTaxesProduit } from './dynamicTaxCalculator';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
 
