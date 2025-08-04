@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, User, Package, Search, Truck, Store, Calculator } from 'lucide-react';
-import { Client, Produit, LigneDocument, BonLivraison, TaxeCalculee } from '../types';
+import { Client, Produit, LigneDocument, BonLivraison, TaxGroup, TaxGroupSummary } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { 
-  calculerTaxesProduit, 
-  agregerTaxesProduits, 
-  formaterTaxesPourAffichage,
-  creerTaxesDefautProduit 
-} from '../utils/productTaxCalculator';
+import { calculateTaxesByGroup, loadTaxGroups, ensureTaxGroupForProduct } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -35,9 +30,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [produits, setProduits] = useState<Produit[]>([]);
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
+  const [taxGroups, setTaxGroups] = useState<TaxGroup[]>([]);
+  const [taxGroupsSummary, setTaxGroupsSummary] = useState<TaxGroupSummary[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -71,7 +65,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     if (isOpen && isReady) {
       loadClients();
       loadProduits();
-      loadTaxes();
+      loadTaxGroupsData();
       
       if (bonLivraison) {
         setFormData({
@@ -85,7 +79,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         setSelectedClient(bonLivraison.client);
         setClientSearchTerm(bonLivraison.client.nom);
         setLignes(bonLivraison.lignes);
-        setTaxesPercentage(bonLivraison.taxesPercentage || []);
+        setTaxGroupsSummary(bonLivraison.taxGroupsSummary || []);
       } else {
         generateNumero();
         // Reset form for new bon de livraison
@@ -100,7 +94,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         setSelectedClient(null);
         setClientSearchTerm('');
         setLignes([]);
-        setTaxesPercentage([]);
+        setTaxGroupsSummary([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -127,8 +121,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculerTaxesBonLivraison();
-  }, [lignes]);
+    recalculateTaxes();
+  }, [lignes, taxGroups]);
 
   const loadClients = async () => {
     if (!isReady) return;
@@ -166,61 +160,34 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     }
   };
 
-  const loadTaxes = async () => {
+  const loadTaxGroupsData = async () => {
     if (!isReady) return;
     
     if (!isElectron) {
-      const savedTaxes = localStorage.getItem('taxes');
-      if (savedTaxes) {
-        setTaxes(JSON.parse(savedTaxes));
+      const savedTaxGroups = localStorage.getItem('taxGroups');
+      if (savedTaxGroups) {
+        setTaxGroups(JSON.parse(savedTaxGroups));
       }
       return;
     }
 
     try {
-      const result = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
-      const loadedTaxes = result.map((tax: any) => ({
-        ...tax,
-        applicableDocuments: JSON.parse(tax.applicableDocuments),
-        actif: Boolean(tax.actif)
-      }));
-      setTaxes(loadedTaxes);
+      const groups = await loadTaxGroups(query);
+      setTaxGroups(groups);
     } catch (error) {
-      console.error('Error loading taxes:', error);
+      console.error('Error loading tax groups:', error);
     }
   };
 
-  const recalculerTaxesBonLivraison = () => {
+  const recalculateTaxes = () => {
     if (lignes.length === 0) {
-      setTaxesPercentage([]);
+      setTaxGroupsSummary([]);
       return;
     }
 
-    // Recalculer les taxes pour chaque ligne
-    const updatedLignes = lignes.map(ligne => {
-      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-        ? ligne.taxes 
-        : creerTaxesDefautProduit(ligne.produit.tva);
-      
-      const resultatTaxes = calculerTaxesProduit(
-        ligne.montantHT,
-        taxesProduit
-      );
-
-      return {
-        ...ligne,
-        taxes: taxesProduit,
-        taxesCalculees: resultatTaxes.taxesCalculees,
-        montantTTC: resultatTaxes.montantTTC
-      };
-    });
-
-    setLignes(updatedLignes);
-
-    // Agréger les taxes de tous les produits
-    const { taxesAgregees } = agregerTaxesProduits(updatedLignes);
-    const taxesFormatees = formaterTaxesPourAffichage(taxesAgregees);
-    setTaxesPercentage(taxesFormatees);
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    setTaxGroupsSummary(taxGroupsSummary);
   };
 
   // Filter clients based on search term
@@ -283,6 +250,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       setLignes([...lignes, newLigne]);
     }
     
+    // Ensure tax group exists for this product
+    ensureTaxGroupForProduct(produit.tva, query);
+    
     setProductSearchTerm('');
     setShowProductDropdown(false);
   };
@@ -316,13 +286,11 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
-    // Agréger les taxes des produits
-    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    const totalTTC = totalHT + totalTaxes;
     
-    // Pour les bons de livraison, pas de taxes fixes
-    const totalTTC = totalHT + totalTaxesPercentage;
-    
-    return { totalHT, totalTaxesPercentage, totalTTC };
+    return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };
   };
 
   const handleSave = async () => {
@@ -335,7 +303,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
     try {
       // Calculate totals for display purposes
-      const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+      const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const bonLivraisonData: BonLivraison = {
         id: bonLivraison?.id || uuidv4(),
@@ -347,10 +315,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         factureId: formData.factureId || undefined,
         notes: formData.notes,
         totalHT,
-        taxesPercentage,
-        taxesFixes: [],
-        totalTaxesPercentage,
-        totalTaxesFixes: 0,
+        taxGroupsSummary,
+        totalTaxes,
         totalTTC
       };
 
@@ -368,7 +334,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
           bonLivraisonData.factureId || null,
           bonLivraisonData.notes || '',
           bonLivraisonData.totalHT,
-          bonLivraisonData.totalTaxesPercentage || 0,
+          bonLivraisonData.totalTaxes || 0,
           bonLivraisonData.totalTTC
         ]
       );
@@ -791,18 +757,20 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax calculations */}
-                    {taxCalculations.length > 0 && (
+                    {/* Tax groups summary */}
+                    {taxGroupsSummary.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par groupe:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{calc.nom}:</span>
-                              <span>{formatCurrency(calc.montant)}</span>
+                              <span className="text-gray-600">
+                                {group.groupName} {group.rate ? `${group.rate}%` : ''}:
+                              </span>
+                              <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
                           ))}
                         </div>

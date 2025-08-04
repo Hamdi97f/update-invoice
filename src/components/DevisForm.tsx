@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart, Store } from 'lucide-react';
-import { Client, Produit, LigneDocument, Devis, TaxeCalculee } from '../types';
+import { Client, Produit, LigneDocument, Devis, TaxGroup, TaxGroupSummary } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { 
-  calculerTaxesProduit, 
-  agregerTaxesProduits, 
-  formaterTaxesPourAffichage,
-  creerTaxesDefautProduit 
-} from '../utils/productTaxCalculator';
+import { calculateTaxesByGroup, loadTaxGroups, ensureTaxGroupForProduct } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
@@ -35,8 +30,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const [produits, setProduits] = useState<Produit[]>([]);
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
+  const [taxGroups, setTaxGroups] = useState<TaxGroup[]>([]);
+  const [taxGroupsSummary, setTaxGroupsSummary] = useState<TaxGroupSummary[]>([]);
   
   // Search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -59,6 +54,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     if (isOpen && isReady) {
       loadClients();
       loadProduits();
+      loadTaxGroupsData();
       
       if (devis) {
         setFormData({
@@ -72,7 +68,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         setSelectedClient(devis.client);
         setClientSearchTerm(devis.client.nom);
         setLignes(devis.lignes);
-        setTaxesPercentage(devis.taxesPercentage || []);
+        setTaxGroupsSummary(devis.taxGroupsSummary || []);
       } else {
         generateNumero();
         // Reset form for new devis
@@ -87,7 +83,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         setSelectedClient(null);
         setClientSearchTerm('');
         setLignes([]);
-        setTaxesPercentage([]);
+        setTaxGroupsSummary([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -114,8 +110,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculerTaxesDevis();
-  }, [lignes]);
+    recalculateTaxes();
+  }, [lignes, taxGroups]);
 
   const loadClients = async () => {
     if (!isReady) return;
@@ -153,27 +149,22 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     }
   };
 
-  const loadTaxes = async () => {
+  const loadTaxGroupsData = async () => {
     if (!isReady) return;
     
     if (!isElectron) {
-      const savedTaxes = localStorage.getItem('taxes');
-      if (savedTaxes) {
-        setTaxes(JSON.parse(savedTaxes));
+      const savedTaxGroups = localStorage.getItem('taxGroups');
+      if (savedTaxGroups) {
+        setTaxGroups(JSON.parse(savedTaxGroups));
       }
       return;
     }
 
     try {
-      const result = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
-      const loadedTaxes = result.map((tax: any) => ({
-        ...tax,
-        applicableDocuments: JSON.parse(tax.applicableDocuments),
-        actif: Boolean(tax.actif)
-      }));
-      setTaxes(loadedTaxes);
+      const groups = await loadTaxGroups(query);
+      setTaxGroups(groups);
     } catch (error) {
-      console.error('Error loading taxes:', error);
+      console.error('Error loading tax groups:', error);
     }
   };
 
@@ -188,37 +179,15 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     }
   };
 
-  const recalculerTaxesDevis = () => {
+  const recalculateTaxes = () => {
     if (lignes.length === 0) {
-      setTaxesPercentage([]);
+      setTaxGroupsSummary([]);
       return;
     }
 
-    // Recalculer les taxes pour chaque ligne
-    const updatedLignes = lignes.map(ligne => {
-      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-        ? ligne.taxes 
-        : creerTaxesDefautProduit(ligne.produit.tva);
-      
-      const resultatTaxes = calculerTaxesProduit(
-        ligne.montantHT,
-        taxesProduit
-      );
-
-      return {
-        ...ligne,
-        taxes: taxesProduit,
-        taxesCalculees: resultatTaxes.taxesCalculees,
-        montantTTC: resultatTaxes.montantTTC
-      };
-    });
-
-    setLignes(updatedLignes);
-
-    // Agréger les taxes de tous les produits
-    const { taxesAgregees } = agregerTaxesProduits(updatedLignes);
-    const taxesFormatees = formaterTaxesPourAffichage(taxesAgregees);
-    setTaxesPercentage(taxesFormatees);
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    setTaxGroupsSummary(taxGroupsSummary);
   };
 
   // Filter clients based on search term
@@ -261,30 +230,12 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       const montantHT = ligne.quantite * ligne.prixUnitaire;
       ligne.montantHT = montantHT;
       
-      // Recalculer les taxes pour ce produit
-      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-        ? ligne.taxes 
-        : creerTaxesDefautProduit(ligne.produit.tva);
-      
-      const resultatTaxes = calculerTaxesProduit(
-        montantHT,
-        taxesProduit
-      );
-      
-      ligne.taxes = taxesProduit;
-      ligne.taxesCalculees = resultatTaxes.taxesCalculees;
-      ligne.montantTTC = resultatTaxes.montantTTC;
+      // Calculate TTC based on product tax rate
+      ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
       
       setLignes(newLignes);
     } else {
       const montantHT = produit.prixUnitaire;
-      
-      // Calculer les taxes pour ce nouveau produit
-      const taxesProduit = creerTaxesDefautProduit(produit.tva);
-      const resultatTaxes = calculerTaxesProduit(
-        montantHT,
-        taxesProduit
-      );
       
       const newLigne: LigneDocument = {
         id: uuidv4(),
@@ -293,11 +244,12 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
         montantHT,
-        montantTTC: resultatTaxes.montantTTC,
-        taxes: taxesProduit,
-        taxesCalculees: resultatTaxes.taxesCalculees
+        montantTTC: montantHT * (1 + produit.tva / 100)
       };
       setLignes([...lignes, newLigne]);
+      
+      // Ensure tax group exists for this product
+      ensureTaxGroupForProduct(produit.tva, query);
     }
     
     setProductSearchTerm('');
@@ -313,7 +265,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       if (produit) {
         ligne.produit = produit;
         ligne.prixUnitaire = produit.prixUnitaire;
-        ligne.taxes = creerTaxesDefautProduit(produit.tva);
+        // Ensure tax group exists for new product
+        ensureTaxGroupForProduct(produit.tva, query);
       }
     } else {
       (ligne as any)[field] = value;
@@ -322,19 +275,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
     
-    // Recalculer les taxes pour ce produit spécifique
-    const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-      ? ligne.taxes 
-      : creerTaxesDefautProduit(ligne.produit.tva);
-    
-    const resultatTaxes = calculerTaxesProduit(
-      montantHT,
-      taxesProduit
-    );
-    
-    ligne.taxes = taxesProduit;
-    ligne.taxesCalculees = resultatTaxes.taxesCalculees;
-    ligne.montantTTC = resultatTaxes.montantTTC;
+    // Calculate TTC based on product tax rate
+    ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
 
     setLignes(newLignes);
   };
@@ -346,13 +288,11 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Agréger les taxes des produits
-    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    const totalTTC = totalHT + totalTaxes;
     
-    // Pour les devis, pas de taxes fixes
-    const totalTTC = totalHT + totalTaxesPercentage;
-    
-    return { totalHT, totalTaxesPercentage, totalTTC };
+    return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };
   };
 
   const handleSave = async () => {
@@ -364,7 +304,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     }
 
     try {
-      const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+      const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const devisData: Devis = {
         id: devis?.id || uuidv4(),
@@ -374,10 +314,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         client: selectedClient,
         lignes,
         totalHT,
-        taxesPercentage,
-        taxesFixes: [], // Pas de taxes fixes pour les devis
-        totalTaxesPercentage,
-        totalTaxesFixes: 0,
+        taxGroupsSummary,
+        totalTaxes,
         totalTTC,
         statut: formData.statut,
         notes: formData.notes
@@ -395,7 +333,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
           devisData.dateValidite.toISOString(),
           devisData.client.id,
           devisData.totalHT,
-          devisData.totalTaxesPercentage,
+          devisData.totalTaxes,
           devisData.totalTTC,
           devisData.statut,
           devisData.notes || ''
@@ -464,7 +402,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -840,25 +778,25 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {taxesPercentage.length > 0 && (
+                    {taxGroupsSummary.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par produit:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par groupe:</span>
                           </div>
-                          {taxesPercentage.map((taxe, index) => (
+                          {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">
-                                {taxe.nom} {taxe.taux ? `${taxe.taux}%` : ''}:
+                                {group.groupName} {group.rate ? `${group.rate}%` : ''}:
                               </span>
-                              <span>{formatCurrency(taxe.montant)}</span>
+                              <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxesPercentage)}</span>
+                          <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                       </>
                     )}

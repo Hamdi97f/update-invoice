@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, User, Package, Calculator, Search, ShoppingCart } from 'lucide-react';
-import { Fournisseur, Produit, LigneDocument, CommandeFournisseur, TaxeCalculee } from '../types';
+import { Fournisseur, Produit, LigneDocument, CommandeFournisseur, TaxGroup, TaxGroupSummary } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency, calculateTTC } from '../utils/currency';
-import { 
-  calculerTaxesProduit, 
-  agregerTaxesProduits, 
-  formaterTaxesPourAffichage,
-  creerTaxesDefautProduit 
-} from '../utils/productTaxCalculator';
+import { calculateTaxesByGroup, loadTaxGroups, ensureTaxGroupForProduct } from '../utils/productTaxCalculator';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import FournisseurForm from './FournisseurForm';
@@ -35,9 +30,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const [produits, setProduits] = useState<Produit[]>([]);
   const [lignes, setLignes] = useState<LigneDocument[]>([]);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
-  const [taxesPercentage, setTaxesPercentage] = useState<TaxeCalculee[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
-  const [taxCalculations, setTaxCalculations] = useState<any[]>([]);
+  const [taxGroups, setTaxGroups] = useState<TaxGroup[]>([]);
+  const [taxGroupsSummary, setTaxGroupsSummary] = useState<TaxGroupSummary[]>([]);
   
   // Search states
   const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
@@ -71,7 +65,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     if (isOpen && isReady) {
       loadFournisseurs();
       loadProduits();
-      loadTaxes();
+      loadTaxGroupsData();
       
       if (commande) {
         setFormData({
@@ -85,7 +79,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         setSelectedFournisseur(commande.fournisseur);
         setFournisseurSearchTerm(commande.fournisseur.nom);
         setLignes(commande.lignes);
-        setTaxesPercentage(commande.taxesPercentage || []);
+        setTaxGroupsSummary(commande.taxGroupsSummary || []);
       } else {
         generateNumero();
         // Reset form for new commande
@@ -100,7 +94,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         setSelectedFournisseur(null);
         setFournisseurSearchTerm('');
         setLignes([]);
-        setTaxesPercentage([]);
+        setTaxGroupsSummary([]);
         setProductSearchTerm('');
         setShowProductDropdown(false);
       }
@@ -127,8 +121,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculerTaxesCommande();
-  }, [lignes]);
+    recalculateTaxes();
+  }, [lignes, taxGroups]);
 
   const loadFournisseurs = async () => {
     if (!isReady) return;
@@ -166,61 +160,34 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     }
   };
 
-  const loadTaxes = async () => {
+  const loadTaxGroupsData = async () => {
     if (!isReady) return;
     
     if (!isElectron) {
-      const savedTaxes = localStorage.getItem('taxes');
-      if (savedTaxes) {
-        setTaxes(JSON.parse(savedTaxes));
+      const savedTaxGroups = localStorage.getItem('taxGroups');
+      if (savedTaxGroups) {
+        setTaxGroups(JSON.parse(savedTaxGroups));
       }
       return;
     }
 
     try {
-      const result = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
-      const loadedTaxes = result.map((tax: any) => ({
-        ...tax,
-        applicableDocuments: JSON.parse(tax.applicableDocuments),
-        actif: Boolean(tax.actif)
-      }));
-      setTaxes(loadedTaxes);
+      const groups = await loadTaxGroups(query);
+      setTaxGroups(groups);
     } catch (error) {
-      console.error('Error loading taxes:', error);
+      console.error('Error loading tax groups:', error);
     }
   };
 
-  const recalculerTaxesCommande = () => {
+  const recalculateTaxes = () => {
     if (lignes.length === 0) {
-      setTaxesPercentage([]);
+      setTaxGroupsSummary([]);
       return;
     }
 
-    // Recalculer les taxes pour chaque ligne
-    const updatedLignes = lignes.map(ligne => {
-      const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-        ? ligne.taxes 
-        : creerTaxesDefautProduit(ligne.produit.tva);
-      
-      const resultatTaxes = calculerTaxesProduit(
-        ligne.montantHT,
-        taxesProduit
-      );
-
-      return {
-        ...ligne,
-        taxes: taxesProduit,
-        taxesCalculees: resultatTaxes.taxesCalculees,
-        montantTTC: resultatTaxes.montantTTC
-      };
-    });
-
-    setLignes(updatedLignes);
-
-    // Agréger les taxes de tous les produits
-    const { taxesAgregees } = agregerTaxesProduits(updatedLignes);
-    const taxesFormatees = formaterTaxesPourAffichage(taxesAgregees);
-    setTaxesPercentage(taxesFormatees);
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    setTaxGroupsSummary(taxGroupsSummary);
   };
 
   // Filter fournisseurs based on search term
@@ -278,6 +245,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       setLignes([...lignes, newLigne]);
     }
     
+    // Ensure tax group exists for this product
+    ensureTaxGroupForProduct(produit.tva, query);
+    
     setProductSearchTerm('');
     setShowProductDropdown(false);
   };
@@ -310,14 +280,11 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const calculateTotals = () => {
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
-    // Agréger les taxes des produits
-    const { totalTaxesPercentage } = agregerTaxesProduits(lignes);
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    const totalTTC = totalHT + totalTaxes;
     
-    // Pour les commandes fournisseur, pas de taxes fixes
-    const totalTTC = totalHT + totalTaxesPercentage;
-    const totalTaxes = totalTaxesPercentage;
-    
-    return { totalHT, totalTaxesPercentage, totalTTC, totalTaxes };
+    return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };
   };
 
   const handleSave = async () => {
@@ -329,7 +296,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     }
 
     try {
-      const { totalHT, totalTaxesPercentage, totalTTC } = calculateTotals();
+      const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const commandeData: CommandeFournisseur = {
         id: commande?.id || uuidv4(),
@@ -339,10 +306,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
         fournisseur: selectedFournisseur,
         lignes,
         totalHT,
-        taxesPercentage,
-        taxesFixes: [],
-        totalTaxesPercentage,
-        totalTaxesFixes: 0,
+        taxGroupsSummary,
+        totalTaxes,
         totalTTC,
         statut: formData.statut,
         notes: formData.notes
@@ -360,7 +325,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
           commandeData.dateReception.toISOString(),
           commandeData.fournisseur.id,
           commandeData.totalHT,
-          commandeData.totalTaxesPercentage || 0,
+          commandeData.totalTaxes,
           commandeData.totalTTC,
           commandeData.statut,
           commandeData.notes || ''
@@ -820,18 +785,20 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax calculations */}
-                    {taxCalculations.length > 0 && (
+                    {/* Tax groups summary */}
+                    {taxGroupsSummary.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes additionnelles:</span>
+                            <span className="text-sm font-medium text-gray-700">Taxes par groupe:</span>
                           </div>
-                          {taxCalculations.map((calc, index) => (
+                          {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">{calc.nom}:</span>
-                              <span>{formatCurrency(calc.montant)}</span>
+                              <span className="text-gray-600">
+                                {group.groupName} {group.rate ? `${group.rate}%` : ''}:
+                              </span>
+                              <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
                           ))}
                         </div>
