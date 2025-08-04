@@ -524,7 +524,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
+  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
