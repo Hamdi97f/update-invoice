@@ -131,6 +131,12 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
       );
 
       onSave(produitData);
+      
+      // Ensure tax group exists for this product's tax rate
+      if (produitData.tva > 0) {
+        ensureTaxGroupForProduct(produitData.tva, query);
+      }
+      
       onClose();
     } catch (error: any) {
       console.error('Error saving produit:', error);

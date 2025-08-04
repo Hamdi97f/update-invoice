@@ -1007,45 +1007,38 @@ export const generateCommandeFournisseurPDF = async (commande: CommandeFournisse
             prixUnitaire: ligne.prixUnitaire,
             remise: ligne.remise,
             montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC,
-            taxes: creerTaxesDefautProduit(ligne.tva || 0),
-            taxesCalculees: {}
+            montantTTC: ligne.montantTTC
           }));
-          
-          // Recalculer les taxes pour chaque ligne
-          commande.lignes = commande.lignes.map(ligne => {
-            const resultatTaxes = calculerTaxesProduit(ligne.montantHT, ligne.taxes);
-            return {
-              ...ligne,
-              taxesCalculees: resultatTaxes.taxesCalculees,
-              montantTTC: resultatTaxes.montantTTC
-            };
-          });
         }
       } catch (error) {
         console.error('Error loading commande fournisseur lines:', error);
       }
     }
     
-    // Agréger les taxes des produits
-    const { taxesAgregees, totalTaxesPercentage } = agregerTaxesProduits(commande.lignes);
+    // Calculate taxes by group
+    const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
+    const query = isElectron ? window.electronAPI.dbQuery : undefined;
+    
+    let taxGroupsSummary = [];
+    let totalTaxesCalculated = 0;
+    
+    if (query) {
+      try {
+        const taxGroups = await loadTaxGroups(query);
+        const result = calculateTaxesByGroup(commande.lignes, taxGroups);
+        taxGroupsSummary = result.taxGroupsSummary;
+        totalTaxesCalculated = result.totalTaxes;
+      } catch (error) {
+        console.error('Error calculating taxes for commande:', error);
+      }
+    }
     
     const documentData = {
       ...commande,
       type: 'commande',
-      taxesPercentage: Object.entries(taxesAgregees).map(([cleTaxe, montant]) => {
-        const match = cleTaxe.match(/^(.+)\s(\d+(?:\.\d+)?)%$/);
-        return {
-          nom: match ? match[1] : cleTaxe,
-          taux: match ? parseFloat(match[2]) : undefined,
-          montant,
-          type: 'percentage' as const
-        };
-      }),
-      taxesFixes: [],
-      totalTaxesPercentage,
-      totalTaxesFixes: 0,
-      totalTTC: commande.totalHT + totalTaxesPercentage
+      taxGroupsSummary,
+      totalTaxes: totalTaxesCalculated,
+      totalTTC: commande.totalHT + totalTaxesCalculated
     };
     
     return await generateEnhancedDocument(documentData, 'COMMANDE FOURNISSEUR');
