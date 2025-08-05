@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Save, Calculator, Percent, DollarSign, ArrowUp, ArrowDown, Settings, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, Calculator, Percent, DollarSign, ArrowUp, ArrowDown, Settings, AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { TaxGroup } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';

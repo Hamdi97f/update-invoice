@@ -123,7 +123,7 @@ export const calculateTaxesByGroup = (
   for (const ligne of lignes) {
     const productTaxRate = ligne.produit.tva;
     
-    if (productTaxRate > 0) {
+    if (productTaxRate >= 0) {
       // Find applicable tax group
       const applicableGroup = taxGroups.find(
         group => group.isAutoCreated && group.type === 'percentage' && group.value === productTaxRate && group.isActive
@@ -140,12 +140,12 @@ export const calculateTaxesByGroup = (
             rate: applicableGroup.value,
             baseAmount: 0,
             taxAmount: 0,
-            products: []
+      const groupKey = `tva_${productTaxRate}`;
           });
         }
         
-        const groupSummary = groupsMap.get(groupKey)!;
-        groupSummary.baseAmount += ligne.montantHT;
+          groupId: `tva_${productTaxRate}`,
+          groupName: productTaxRate === 0 ? 'Exonéré TVA' : `TVA ${productTaxRate}%`,
         groupSummary.products.push({
           productId: ligne.produit.id,
           productName: ligne.produit.nom,
@@ -153,16 +153,18 @@ export const calculateTaxesByGroup = (
           htAmount: ligne.montantHT
         });
       }
+    
+      // Calculate tax for this group
+      if (productTaxRate > 0) {
+        groupSummary.taxAmount = (groupSummary.baseAmount * productTaxRate) / 100;
+        totalTaxes += groupSummary.taxAmount;
+      }
     }
   }
   
-  // Calculate tax for each group
   const taxGroupsSummary: TaxGroupSummary[] = [];
   
   for (const [groupKey, groupSummary] of groupsMap) {
-    // Calculate tax on the group's total HT
-    groupSummary.taxAmount = (groupSummary.baseAmount * groupSummary.rate!) / 100;
-    totalTaxes += groupSummary.taxAmount;
     taxGroupsSummary.push(groupSummary);
   }
   

@@ -286,6 +286,17 @@ function updateDatabaseSchema() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (produitId) REFERENCES produits (id)
       );
+
+      CREATE TABLE IF NOT EXISTS tax_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        value REAL NOT NULL,
+        calculationBase TEXT NOT NULL,
+        order_index INTEGER NOT NULL,
+        isAutoCreated BOOLEAN DEFAULT 0,
+        isActive BOOLEAN DEFAULT 1
+      );
     `;
 
     // Execute table creation
@@ -432,6 +443,56 @@ function insertSampleData() {
       'totalHT',
       JSON.stringify(['factures']),
       2,
+      1
+    );
+    
+    // Sample tax groups
+    const insertTaxGroup = db.prepare(`
+      INSERT INTO tax_groups (id, name, type, value, calculationBase, order_index, isAutoCreated, isActive)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    insertTaxGroup.run(
+      uuidv4(),
+      'TVA',
+      'percentage',
+      0,
+      'HT',
+      1,
+      1,
+      1
+    );
+    
+    insertTaxGroup.run(
+      uuidv4(),
+      'TVA',
+      'percentage',
+      7,
+      'HT',
+      1,
+      1,
+      1
+    );
+    
+    insertTaxGroup.run(
+      uuidv4(),
+      'TVA',
+      'percentage',
+      13,
+      'HT',
+      1,
+      1,
+      1
+    );
+    
+    insertTaxGroup.run(
+      uuidv4(),
+      'TVA',
+      'percentage',
+      19,
+      'HT',
+      1,
+      1,
       1
     );
     
