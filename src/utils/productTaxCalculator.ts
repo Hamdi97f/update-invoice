@@ -139,7 +139,6 @@ export const calculateTaxesByGroup = (
             type: applicableGroup.type,
             rate: applicableGroup.value,
             baseAmount: 0,
-            taxAmount: 0,
       const groupKey = `tva_${productTaxRate}`;
           });
         }
