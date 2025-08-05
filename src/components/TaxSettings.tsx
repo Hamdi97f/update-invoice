@@ -519,18 +519,6 @@ const TaxSettings: React.FC = () => {
     </div>
   );
 
-  async function handleToggleActive(tax: TaxGroup) {
-    try {
-      await query(
-        'UPDATE tax_groups SET isActive = ? WHERE id = ?',
-        [tax.isActive ? 0 : 1, tax.id]
-      );
-      loadTaxGroups();
-    } catch (error) {
-      console.error('Error toggling tax status:', error);
-      alert('Erreur lors de la modification du statut');
-    }
-  }
 };
 
 export default TaxSettings;
