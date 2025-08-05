@@ -107,7 +107,8 @@ export const calculateProductTaxes = (
 // Group products by tax rate and calculate taxes per group
 export const calculateTaxesByGroup = (
   lignes: LigneDocument[],
-  taxGroups: TaxGroup[]
+  taxGroups: TaxGroup[],
+  documentType: 'factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur' = 'factures'
 ): {
   taxGroupsSummary: TaxGroupSummary[];
   totalTaxes: number;
@@ -119,14 +120,23 @@ export const calculateTaxesByGroup = (
   const groupsMap = new Map<string, TaxGroupSummary>();
   let totalTaxes = 0;
   
-  // Group products by tax rate
+  // Filter tax groups applicable to this document type
+  const applicableTaxGroups = taxGroups.filter(group => 
+    group.isActive && 
+    (!group.applicableDocuments || group.applicableDocuments.includes(documentType))
+  );
+  
+  // Sort by order for proper cascade calculation
+  applicableTaxGroups.sort((a, b) => a.order - b.order);
+  
+  // First pass: Group products by tax rate (for auto-created TVA groups)
   for (const ligne of lignes) {
     const productTaxRate = ligne.produit.tva;
     
     if (productTaxRate >= 0) {
-      // Find applicable tax group
-      const applicableGroup = taxGroups.find(
-        group => group.isAutoCreated && group.type === 'percentage' && group.value === productTaxRate && group.isActive
+      // Find applicable auto-created tax group
+      const applicableGroup = applicableTaxGroups.find(
+        group => group.isAutoCreated && group.type === 'percentage' && group.value === productTaxRate
       );
       
       if (applicableGroup) {
@@ -135,7 +145,7 @@ export const calculateTaxesByGroup = (
         if (!groupsMap.has(groupKey)) {
           groupsMap.set(groupKey, {
             groupId: applicableGroup.id,
-            groupName: applicableGroup.name,
+            groupName: productTaxRate === 0 ? 'Exonéré TVA' : `TVA ${productTaxRate}%`,
             type: applicableGroup.type,
             rate: applicableGroup.value,
             baseAmount: 0,
@@ -156,12 +166,47 @@ export const calculateTaxesByGroup = (
     }
   }
   
-  // Second pass: calculate tax amounts
+  // Second pass: Calculate tax amounts for product groups
   for (const [groupKey, groupSummary] of groupsMap) {
     if (groupSummary.rate && groupSummary.rate > 0) {
       groupSummary.taxAmount = (groupSummary.baseAmount * groupSummary.rate) / 100;
       totalTaxes += groupSummary.taxAmount;
     }
+  }
+  
+  // Third pass: Apply manual taxes with cascade
+  const manualTaxGroups = applicableTaxGroups.filter(group => !group.isAutoCreated);
+  let runningTotal = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+  
+  for (const manualGroup of manualTaxGroups) {
+    let baseAmount = 0;
+    
+    if (manualGroup.calculationBase === 'HT') {
+      baseAmount = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    } else if (manualGroup.calculationBase === 'HT_plus_previous_taxes') {
+      baseAmount = runningTotal;
+    }
+    
+    let taxAmount = 0;
+    if (manualGroup.type === 'percentage') {
+      taxAmount = (baseAmount * manualGroup.value) / 100;
+    } else {
+      taxAmount = manualGroup.value;
+    }
+    
+    const groupKey = `${manualGroup.name}_${manualGroup.id}`;
+    groupsMap.set(groupKey, {
+      groupId: manualGroup.id,
+      groupName: manualGroup.name,
+      type: manualGroup.type,
+      rate: manualGroup.type === 'percentage' ? manualGroup.value : undefined,
+      baseAmount,
+      taxAmount,
+      products: [] // Manual taxes apply to all products
+    });
+    
+    totalTaxes += taxAmount;
+    runningTotal += taxAmount;
   }
   
   const taxGroupsSummary: TaxGroupSummary[] = [];
@@ -170,8 +215,19 @@ export const calculateTaxesByGroup = (
     taxGroupsSummary.push(groupSummary);
   }
   
-  // Sort by tax rate for consistent display
-  taxGroupsSummary.sort((a, b) => (a.rate || 0) - (b.rate || 0));
+  // Sort by order and then by tax rate for consistent display
+  taxGroupsSummary.sort((a, b) => {
+    const aGroup = applicableTaxGroups.find(g => g.id === a.groupId);
+    const bGroup = applicableTaxGroups.find(g => g.id === b.groupId);
+    
+    if (aGroup && bGroup) {
+      if (aGroup.order !== bGroup.order) {
+        return aGroup.order - bGroup.order;
+      }
+    }
+    
+    return (a.rate || 0) - (b.rate || 0);
+  });
   
   return {
     taxGroupsSummary,
@@ -311,17 +367,16 @@ export const ensureTaxGroupForProduct = async (
     
     if (existing.length === 0) {
       // Create new auto group
-      const newGroup = autoCreateTaxGroupFromProduct(productTaxRate, ['factures', 'devis', 'bonsLivraison', 'commandesFournisseur']);
+      const newGroup = autoCreateTaxGroupFromProduct(productTaxRate);
       await query(
-        `INSERT INTO tax_groups (id, name, type, value, calculationBase, applicableDocuments, order_index, isAutoCreated, isActive)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tax_groups (id, name, type, value, calculationBase, order_index, isAutoCreated, isActive)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newGroup.id,
           newGroup.name,
           newGroup.type,
           newGroup.value,
           newGroup.calculationBase,
-          JSON.stringify(newGroup.applicableDocuments),
           newGroup.order,
           newGroup.isAutoCreated ? 1 : 0,
           newGroup.isActive ? 1 : 0
