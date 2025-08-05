@@ -71,6 +71,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
         ...bl,
         date: new Date(bl.date),
         lignes: [],
+        taxGroupsSummary: [],
+        totalTaxes: bl.totalTVA || 0,
         client: {
           id: bl.clientId,
           code: bl.clientCode,
@@ -111,20 +113,16 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
           montantTTC: (ligne.prixUnitaire || ligne.produit?.prixUnitaire || 0) * ligne.quantite * (1 + (ligne.tva || ligne.produit?.tva || 0) / 100)
         }));
         
-        // Calculate totals
-        let totalHT = 0;
-        let totalTVA = 0;
-        let totalTTC = 0;
-        
-        bon.lignes.forEach(ligne => {
-          totalHT += ligne.montantHT;
-          totalTVA += (ligne.montantTTC - ligne.montantHT);
-          totalTTC += ligne.montantTTC;
-        });
-        
-        bon.totalHT = totalHT;
-        bon.totalTVA = totalTVA;
-        bon.totalTTC = totalTTC;
+        // Use stored totals or calculate if missing
+        if (!bon.totalHT) {
+          bon.totalHT = bon.lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+        }
+        if (!bon.totalTTC) {
+          bon.totalTTC = bon.lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
+        }
+        if (!bon.totalTaxes) {
+          bon.totalTaxes = bon.totalTTC - bon.totalHT;
+        }
       }
       
       setBonsLivraison(bonsData);

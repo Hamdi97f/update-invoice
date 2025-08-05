@@ -72,7 +72,15 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
       const data = await getFactures();
       // Filter out avoirs (credit notes) which start with AV-
       const regularFactures = data.filter(f => !f.numero.startsWith('AV-'));
-      setFactures(regularFactures);
+      
+      // Ensure each facture has proper tax data structure
+      const processedFactures = regularFactures.map(facture => ({
+        ...facture,
+        taxGroupsSummary: facture.taxGroupsSummary || [],
+        totalTaxes: facture.totalTaxes || 0
+      }));
+      
+      setFactures(processedFactures);
     } catch (error) {
       console.error('Error loading factures:', error);
       alert('Erreur lors du chargement des factures');

@@ -63,7 +63,7 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
         ...cf,
         date: new Date(cf.date),
         dateReception: new Date(cf.dateReception),
-        taxes: [],
+        taxGroupsSummary: [],
         totalTaxes: 0,
         lignes: [],
         fournisseur: {
@@ -104,6 +104,10 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
           montantHT: ligne.montantHT,
           montantTTC: ligne.montantTTC
         }));
+        
+        // Ensure tax data exists
+        commande.totalTaxes = commande.totalTVA || 0;
+        commande.taxGroupsSummary = [];
       }
       
       setCommandes(commandesData);

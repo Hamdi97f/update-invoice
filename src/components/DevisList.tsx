@@ -72,7 +72,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
         ...d,
         date: new Date(d.date),
         dateValidite: new Date(d.dateValidite),
-        taxes: [],
+        taxGroupsSummary: [],
         totalTaxes: 0,
         lignes: [],
         client: {

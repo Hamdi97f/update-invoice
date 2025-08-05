@@ -424,21 +424,12 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
-  // Show aggregated taxes by type and rate
-  if (documentData.taxesPercentage && documentData.taxesPercentage.length > 0) {
-    documentData.taxesPercentage.forEach((taxe: any) => {
-      const taxLabel = taxe.taux ? `${taxe.nom} ${taxe.taux}%` : taxe.nom;
+  // Show tax groups summary
+  if (documentData.taxGroupsSummary && documentData.taxGroupsSummary.length > 0) {
+    documentData.taxGroupsSummary.forEach((group: any) => {
+      const taxLabel = group.rate ? `${group.groupName} ${group.rate}%` : group.groupName;
       doc.text(`${taxLabel}:`, rightX - 50, currentY);
-      doc.text(formatCurrency(taxe.montant), rightX, currentY, { align: 'right' });
-      currentY += settings.spacing.line;
-    });
-  }
-  
-  // Show fixed taxes (only for invoices)
-  if (documentData.taxesFixes && documentData.taxesFixes.length > 0) {
-    documentData.taxesFixes.forEach((taxe: any) => {
-      doc.text(`${taxe.nom}:`, rightX - 50, currentY);
-      doc.text(formatCurrency(taxe.montant), rightX, currentY, { align: 'right' });
+      doc.text(formatCurrency(group.taxAmount), rightX, currentY, { align: 'right' });
       currentY += settings.spacing.line;
     });
   }
@@ -663,99 +654,20 @@ export const generateCombinedFacturesPDF = async (factures: Facture[]) => {
 
 export const generateFacturePDF = async (facture: Facture) => {
   try {
-    // Load lines if not already loaded
-    if (!Array.isArray(facture.lignes) || facture.lignes.length === 0) {
-      try {
-        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-        const query = isElectron ? window.electronAPI.dbQuery : undefined;
-        
-        if (query) {
-          const lignesResult = await query(`
-            SELECT lf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
-            FROM lignes_facture lf
-            JOIN produits p ON lf.produitId = p.id
-            WHERE lf.factureId = ?
-          `, [facture.id]);
-          
-          facture.lignes = lignesResult.map((ligne: any) => ({
-            id: ligne.id,
-            produit: {
-              id: ligne.produitId,
-              ref: ligne.ref,
-              nom: ligne.nom,
-              description: ligne.description,
-              prixUnitaire: ligne.prixUnitaire,
-              tva: ligne.tva,
-              stock: ligne.stock,
-              type: ligne.type || 'vente'
-            },
-            quantite: ligne.quantite,
-            prixUnitaire: ligne.prixUnitaire,
-            remise: ligne.remise,
-            montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC
-          }));
-        }
-      } catch (error) {
-        console.error('Error loading facture lines:', error);
-      }
+    // Ensure lignes is an array
+    if (!Array.isArray(facture.lignes)) {
+      console.warn('Facture lignes is not an array, initializing empty array');
+      facture.lignes = [];
     }
     
-    // Load taxes if not already loaded
-    if (!Array.isArray(facture.lignes) || facture.lignes.length === 0 || 
-        !facture.lignes.some(ligne => ligne.taxBreakdown && Object.keys(ligne.taxBreakdown).length > 0)) {
-      try {
-        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-        const query = isElectron ? window.electronAPI.dbQuery : undefined;
-        
-        if (query) {
-          // Recalculate taxes for each line if not already done
-          const taxesResult = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
-          const taxes = taxesResult.map((tax: any) => ({
-            ...tax,
-            applicableDocuments: JSON.parse(tax.applicableDocuments)
-          }));
-          
-          // Update each ligne with proper tax calculations
-          facture.lignes = facture.lignes.map(ligne => {
-            const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-              ? ligne.taxes 
-              : creerTaxesDefautProduit(ligne.produit.tva);
-            
-            const resultatTaxes = calculerTaxesProduit(
-              ligne.montantHT,
-              taxesProduit
-            );
-            
-            return {
-              ...ligne,
-              taxes: taxesProduit,
-              taxesCalculees: resultatTaxes.taxesCalculees,
-              montantTTC: resultatTaxes.montantTTC
-            };
-          });
-          
-          // Agréger les taxes pour la facture
-          const { taxesAgregees, totalTaxesPercentage } = agregerTaxesProduits(facture.lignes);
-          facture.totalTaxesPercentage = totalTaxesPercentage;
-          facture.totalTaxesFixes = 0; // Pas de taxes fixes dans ce contexte
-          facture.totalTTC = facture.totalHT + totalTaxesPercentage;
-          
-          // Formater pour l'affichage
-          facture.taxesPercentage = Object.entries(taxesAgregees).map(([cleTaxe, montant]) => {
-            const match = cleTaxe.match(/^(.+)\s(\d+(?:\.\d+)?)%$/);
-            return {
-              nom: match ? match[1] : cleTaxe,
-              taux: match ? parseFloat(match[2]) : undefined,
-              montant,
-              type: 'percentage' as const
-            };
-          });
-          facture.taxesFixes = [];
-        }
-      } catch (error) {
-        console.error('Error loading and calculating taxes for facture:', error);
-      }
+    // Ensure taxGroupsSummary exists
+    if (!facture.taxGroupsSummary) {
+      facture.taxGroupsSummary = [];
+    }
+    
+    // Ensure totalTaxes exists
+    if (typeof facture.totalTaxes !== 'number') {
+      facture.totalTaxes = 0;
     }
     
     const documentData = {
@@ -772,99 +684,20 @@ export const generateFacturePDF = async (facture: Facture) => {
 
 export const generateDevisPDF = async (devis: Devis) => {
   try {
-    // Load lines if not already loaded
-    if (!Array.isArray(devis.lignes) || devis.lignes.length === 0) {
-      try {
-        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-        const query = isElectron ? window.electronAPI.dbQuery : undefined;
-        
-        if (query) {
-          const lignesResult = await query(`
-            SELECT ld.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
-            FROM lignes_devis ld
-            JOIN produits p ON ld.produitId = p.id
-            WHERE ld.devisId = ?
-          `, [devis.id]);
-          
-          devis.lignes = lignesResult.map((ligne: any) => ({
-            id: ligne.id,
-            produit: {
-              id: ligne.produitId,
-              ref: ligne.ref,
-              nom: ligne.nom,
-              description: ligne.description,
-              prixUnitaire: ligne.prixUnitaire,
-              tva: ligne.tva,
-              stock: ligne.stock,
-              type: ligne.type || 'vente'
-            },
-            quantite: ligne.quantite,
-            prixUnitaire: ligne.prixUnitaire,
-            remise: ligne.remise,
-            montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC
-          }));
-        }
-      } catch (error) {
-        console.error('Error loading devis lines:', error);
-      }
+    // Ensure lignes is an array
+    if (!Array.isArray(devis.lignes)) {
+      console.warn('Devis lignes is not an array, initializing empty array');
+      devis.lignes = [];
     }
     
-    // Load taxes if not already loaded
-    if (!Array.isArray(devis.lignes) || devis.lignes.length === 0 || 
-        !devis.lignes.some(ligne => ligne.taxBreakdown && Object.keys(ligne.taxBreakdown).length > 0)) {
-      try {
-        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-        const query = isElectron ? window.electronAPI.dbQuery : undefined;
-        
-        if (query) {
-          // Recalculate taxes for each line if not already done
-          const taxesResult = await query('SELECT * FROM taxes WHERE actif = 1 ORDER BY ordre ASC');
-          const taxes = taxesResult.map((tax: any) => ({
-            ...tax,
-            applicableDocuments: JSON.parse(tax.applicableDocuments)
-          }));
-          
-          // Update each ligne with proper tax calculations
-          devis.lignes = devis.lignes.map(ligne => {
-            const taxesProduit = ligne.taxes && ligne.taxes.length > 0 
-              ? ligne.taxes 
-              : creerTaxesDefautProduit(ligne.produit.tva);
-            
-            const resultatTaxes = calculerTaxesProduit(
-              ligne.montantHT,
-              taxesProduit
-            );
-            
-            return {
-              ...ligne,
-              taxes: taxesProduit,
-              taxesCalculees: resultatTaxes.taxesCalculees,
-              montantTTC: resultatTaxes.montantTTC
-            };
-          });
-          
-          // Agréger les taxes pour le devis
-          const { taxesAgregees, totalTaxesPercentage } = agregerTaxesProduits(devis.lignes);
-          devis.totalTaxesPercentage = totalTaxesPercentage;
-          devis.totalTaxesFixes = 0;
-          devis.totalTTC = devis.totalHT + totalTaxesPercentage;
-          
-          // Formater pour l'affichage
-          devis.taxesPercentage = Object.entries(taxesAgregees).map(([cleTaxe, montant]) => {
-            const match = cleTaxe.match(/^(.+)\s(\d+(?:\.\d+)?)%$/);
-            return {
-              nom: match ? match[1] : cleTaxe,
-              taux: match ? parseFloat(match[2]) : undefined,
-              montant,
-              type: 'percentage' as const
-            };
-          });
-          devis.taxesFixes = [];
-        }
-      } catch (error) {
-        console.error('Error loading and calculating taxes for devis:', error);
-      }
+    // Ensure taxGroupsSummary exists
+    if (!devis.taxGroupsSummary) {
+      devis.taxGroupsSummary = [];
+    }
+    
+    // Ensure totalTaxes exists
+    if (typeof devis.totalTaxes !== 'number') {
+      devis.totalTaxes = 0;
     }
     
     const documentData = {
@@ -881,90 +714,24 @@ export const generateDevisPDF = async (devis: Devis) => {
 
 export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
   try {
-    // Load lines if not already loaded
-    if (!Array.isArray(bonLivraison.lignes) || bonLivraison.lignes.length === 0) {
-      try {
-        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-        const query = isElectron ? window.electronAPI.dbQuery : undefined;
-        
-        if (query) {
-          const lignesResult = await query(`
-            SELECT lbl.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
-            FROM lignes_bon_livraison lbl
-            JOIN produits p ON lbl.produitId = p.id
-            WHERE lbl.bonLivraisonId = ?
-          `, [bonLivraison.id]);
-          
-          bonLivraison.lignes = lignesResult.map((ligne: any) => ({
-            id: ligne.id,
-            produit: {
-              id: ligne.produitId,
-              ref: ligne.ref,
-              nom: ligne.nom,
-              description: ligne.description,
-              prixUnitaire: ligne.prixUnitaire,
-              tva: ligne.tva,
-              stock: ligne.stock,
-              type: ligne.type || 'vente'
-            },
-            quantite: ligne.quantite,
-            prixUnitaire: ligne.produit?.prixUnitaire || 0,
-            remise: 0,
-            montantHT: (ligne.produit?.prixUnitaire || 0) * ligne.quantite,
-            montantTTC: (ligne.produit?.prixUnitaire || 0) * ligne.quantite * (1 + (ligne.produit?.tva || 0) / 100)
-          }));
-        }
-      } catch (error) {
-        console.error('Error loading bon de livraison lines:', error);
-      }
+    // Ensure lignes is an array
+    if (!Array.isArray(bonLivraison.lignes)) {
+      console.warn('BonLivraison lignes is not an array, initializing empty array');
+      bonLivraison.lignes = [];
     }
     
-    // Calculate totals for bon de livraison
-    let totalHT = 0;
-    let totalTVA = 0;
-    let totalTTC = 0;
-    
-    if (bonLivraison.lignes && bonLivraison.lignes.length > 0) {
-      bonLivraison.lignes.forEach(ligne => {
-        const prixUnitaire = ligne.produit.prixUnitaire;
-        const montantHT = prixUnitaire * ligne.quantite;
-        const montantTTC = montantHT * (1 + ligne.produit.tva / 100);
-        
-        totalHT += montantHT;
-        totalTVA += (montantTTC - montantHT);
-        totalTTC += montantTTC;
-        
-        // Update ligne with calculated values
-        ligne.prixUnitaire = prixUnitaire;
-        ligne.montantHT = montantHT;
-        ligne.montantTTC = montantTTC;
-        
-        // Ajouter les taxes par défaut
-        ligne.taxes = creerTaxesDefautProduit(ligne.produit.tva);
-        const resultatTaxes = calculerTaxesProduit(montantHT, ligne.taxes);
-        ligne.taxesCalculees = resultatTaxes.taxesCalculees;
-      });
-    }
-    
-    // Agréger les taxes des produits
-    const { taxesAgregees, totalTaxesPercentage } = agregerTaxesProduits(bonLivraison.lignes);
+    // Use the totals already calculated in the form
+    const totalHT = bonLivraison.totalHT || 0;
+    const totalTaxes = bonLivraison.totalTaxes || 0;
+    const totalTTC = bonLivraison.totalTTC || 0;
+    const taxGroupsSummary = bonLivraison.taxGroupsSummary || [];
     
     const documentData = {
       ...bonLivraison,
       type: 'bonLivraison',
       totalHT,
-      taxesPercentage: Object.entries(taxesAgregees).map(([cleTaxe, montant]) => {
-        const match = cleTaxe.match(/^(.+)\s(\d+(?:\.\d+)?)%$/);
-        return {
-          nom: match ? match[1] : cleTaxe,
-          taux: match ? parseFloat(match[2]) : undefined,
-          montant,
-          type: 'percentage' as const
-        };
-      }),
-      taxesFixes: [],
-      totalTaxesPercentage,
-      totalTaxesFixes: 0,
+      taxGroupsSummary,
+      totalTaxes,
       totalTTC,
     };
     
@@ -977,68 +744,24 @@ export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
 
 export const generateCommandeFournisseurPDF = async (commande: CommandeFournisseur) => {
   try {
-    // Load lines if not already loaded
-    if (!Array.isArray(commande.lignes) || commande.lignes.length === 0) {
-      try {
-        const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-        const query = isElectron ? window.electronAPI.dbQuery : undefined;
-        
-        if (query) {
-          const lignesResult = await query(`
-            SELECT lcf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
-            FROM lignes_commande_fournisseur lcf
-            JOIN produits p ON lcf.produitId = p.id
-            WHERE lcf.commandeId = ?
-          `, [commande.id]);
-          
-          commande.lignes = lignesResult.map((ligne: any) => ({
-            id: ligne.id,
-            produit: {
-              id: ligne.produitId,
-              ref: ligne.ref,
-              nom: ligne.nom,
-              description: ligne.description,
-              prixUnitaire: ligne.prixUnitaire,
-              tva: ligne.tva,
-              stock: ligne.stock,
-              type: ligne.type || 'achat'
-            },
-            quantite: ligne.quantite,
-            prixUnitaire: ligne.prixUnitaire,
-            remise: ligne.remise,
-            montantHT: ligne.montantHT,
-            montantTTC: ligne.montantTTC
-          }));
-        }
-      } catch (error) {
-        console.error('Error loading commande fournisseur lines:', error);
-      }
+    // Ensure lignes is an array
+    if (!Array.isArray(commande.lignes)) {
+      console.warn('Commande lignes is not an array, initializing empty array');
+      commande.lignes = [];
     }
     
-    // Calculate taxes by group
-    const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-    const query = isElectron ? window.electronAPI.dbQuery : undefined;
-    
-    let taxGroupsSummary = [];
-    let totalTaxesCalculated = 0;
-    
-    if (query) {
-      try {
-        const taxGroups = await loadTaxGroups(query);
-        const result = calculateTaxesByGroup(commande.lignes, taxGroups);
-        taxGroupsSummary = result.taxGroupsSummary;
-        totalTaxesCalculated = result.totalTaxes;
-      } catch (error) {
-        console.error('Error calculating taxes for commande:', error);
-      }
-    }
+    // Use the totals already calculated in the form
+    const totalHT = commande.totalHT || 0;
+    const totalTaxes = commande.totalTaxes || 0;
+    const totalTTC = commande.totalTTC || 0;
+    const taxGroupsSummary = commande.taxGroupsSummary || [];
     
     const documentData = {
       ...commande,
       type: 'commande',
       taxGroupsSummary,
-      totalTaxes: totalTaxesCalculated,
-      totalTTC: commande.totalHT + totalTaxesCalculated
+      totalTaxes,
+      totalTTC
     };
     
     return await generateEnhancedDocument(documentData, 'COMMANDE FOURNISSEUR');
