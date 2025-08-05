@@ -129,7 +129,7 @@ export const calculateTaxesByGroup = (
         group => group.isAutoCreated && group.type === 'percentage' && group.value === productTaxRate && group.isActive
       );
       
-          groupName: `TVA ${productTaxRate}%`,
+      if (applicableGroup) {
         const groupKey = `${applicableGroup.name}_${applicableGroup.value}`;
         
         if (!groupsMap.has(groupKey)) {
