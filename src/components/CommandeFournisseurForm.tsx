@@ -54,7 +54,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     if (!isReady) return;
     
     try {
-      const numero = await getNextDocumentNumber('commande_fournisseur');
+      const numero = await getNextDocumentNumber('commandesFournisseur', isElectron, query, false);
       setFormData(prev => ({ ...prev, numero }));
     } catch (error) {
       console.error('Error generating numero:', error);
@@ -266,9 +266,12 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       (ligne as any)[field] = value;
     }
 
+    // Recalculate amounts
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
-    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+    
+    // Calculate TTC for this line based on product tax rate
+    ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
 
     setLignes(newLignes);
   };
@@ -296,11 +299,14 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     }
 
     try {
+      // Increment document number only when actually saving
+      const finalNumero = await getNextDocumentNumber('commandesFournisseur', isElectron, query, true);
+      
       const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const commandeData: CommandeFournisseur = {
         id: commande?.id || uuidv4(),
-        numero: formData.numero,
+        numero: commande?.numero || finalNumero, // Use existing numero for edits, new numero for new commandes
         date: new Date(formData.date),
         dateReception: new Date(formData.dateReception),
         fournisseur: selectedFournisseur,

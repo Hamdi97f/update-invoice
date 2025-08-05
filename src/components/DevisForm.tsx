@@ -172,7 +172,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     if (!isReady) return;
     
     try {
-      const numero = await getNextDocumentNumber('devis', isElectron, query);
+      const numero = await getNextDocumentNumber('devis', isElectron, query, false);
       setFormData(prev => ({ ...prev, numero }));
     } catch (error) {
       console.error('Error generating numero:', error);
@@ -272,10 +272,11 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       (ligne as any)[field] = value;
     }
 
+    // Recalculate amounts
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
     
-    // Calculate TTC based on product tax rate
+    // Calculate TTC for this line based on product tax rate
     ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
 
     setLignes(newLignes);
@@ -304,11 +305,14 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     }
 
     try {
+      // Increment document number only when actually saving
+      const finalNumero = await getNextDocumentNumber('devis', isElectron, query, true);
+      
       const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const devisData: Devis = {
         id: devis?.id || uuidv4(),
-        numero: formData.numero,
+        numero: devis?.numero || finalNumero, // Use existing numero for edits, new numero for new devis
         date: new Date(formData.date),
         dateValidite: new Date(formData.dateValidite),
         client: selectedClient,

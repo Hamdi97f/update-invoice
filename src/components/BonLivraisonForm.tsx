@@ -54,7 +54,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     if (!isReady) return;
     
     try {
-      const numero = await getNextDocumentNumber('BL', isElectron, query);
+      const numero = await getNextDocumentNumber('bonsLivraison', isElectron, query, false);
       setFormData(prev => ({ ...prev, numero }));
     } catch (error) {
       console.error('Error generating numero:', error);
@@ -271,10 +271,12 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       (ligne as any)[field] = value;
     }
 
-    // Calculate amounts for bon de livraison
+    // Recalculate amounts
     const montantHT = ligne.quantite * ligne.produit.prixUnitaire;
     ligne.montantHT = montantHT;
-    ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+    
+    // Calculate TTC for this line based on product tax rate
+    ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
 
     setLignes(newLignes);
   };
@@ -302,12 +304,15 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     }
 
     try {
+      // Increment document number only when actually saving
+      const finalNumero = await getNextDocumentNumber('bonsLivraison', isElectron, query, true);
+      
       // Calculate totals for display purposes
       const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const bonLivraisonData: BonLivraison = {
         id: bonLivraison?.id || uuidv4(),
-        numero: formData.numero,
+        numero: bonLivraison?.numero || finalNumero, // Use existing numero for edits, new numero for new bons
         date: new Date(formData.date),
         client: selectedClient,
         lignes,

@@ -112,6 +112,10 @@ export const calculateTaxesByGroup = (
   taxGroupsSummary: TaxGroupSummary[];
   totalTaxes: number;
 } => {
+  if (!lignes || lignes.length === 0) {
+    return { taxGroupsSummary: [], totalTaxes: 0 };
+  }
+
   const groupsMap = new Map<string, TaxGroupSummary>();
   let totalTaxes = 0;
   

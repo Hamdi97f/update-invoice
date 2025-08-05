@@ -37,7 +37,8 @@ const defaultSettings: NumberingSettings = {
 export const getNextDocumentNumber = async (
   documentType: keyof NumberingSettings,
   isElectron: boolean,
-  query?: (sql: string, params?: any[]) => Promise<any>
+  query?: (sql: string, params?: any[]) => Promise<any>,
+  shouldIncrement: boolean = true
 ): Promise<string> => {
   let settings = defaultSettings;
 
@@ -69,24 +70,26 @@ export const getNextDocumentNumber = async (
     ? `${docSettings.prefix}-${year}-${number}`
     : `${docSettings.prefix}-${number}`;
 
-  // Increment current number for next time
-  const newSettings = {
-    ...settings,
-    [documentType]: {
-      ...docSettings,
-      currentNumber: docSettings.currentNumber + 1
-    }
-  };
+  // Only increment if shouldIncrement is true (when actually saving)
+  if (shouldIncrement) {
+    const newSettings = {
+      ...settings,
+      [documentType]: {
+        ...docSettings,
+        currentNumber: docSettings.currentNumber + 1
+      }
+    };
 
-  // Save updated settings
-  if (isElectron && query) {
-    try {
-      await query(
-        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        ['numbering', JSON.stringify(newSettings)]
-      );
-    } catch (error) {
-      console.error('Error updating numbering settings:', error);
+    // Save updated settings
+    if (isElectron && query) {
+      try {
+        await query(
+          'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+          ['numbering', JSON.stringify(newSettings)]
+        );
+      } catch (error) {
+        console.error('Error updating numbering settings:', error);
+      }
     }
   }
 

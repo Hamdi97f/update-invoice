@@ -242,7 +242,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     if (!isReady) return;
     
     try {
-      const numero = await getNextDocumentNumber('factures', isElectron, query);
+      const numero = await getNextDocumentNumber('factures', isElectron, query, false);
       setFormData(prev => ({ ...prev, numero }));
     } catch (error) {
       console.error('Error generating numero:', error);
@@ -260,7 +260,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     if (!isReady) return;
     
     try {
-      const numero = await getNextDocumentNumber('factures', isElectron, query);
+      const numero = await getNextDocumentNumber('factures', isElectron, query, false);
       // Add AV prefix to indicate this is an avoir
       const avoirNumero = `AV-${numero}`;
       setFormData(prev => ({ ...prev, numero: avoirNumero }));
@@ -376,11 +376,11 @@ const FactureForm: React.FC<FactureFormProps> = ({
       (ligne as any)[field] = value;
     }
 
-    // Recalculer les montants
+    // Recalculate amounts
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
     
-    // Calculate TTC based on product tax rate
+    // Calculate TTC for this line based on product tax rate
     ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
 
     setLignes(newLignes);
@@ -414,11 +414,14 @@ const FactureForm: React.FC<FactureFormProps> = ({
     }
 
     try {
+      // Increment document number only when actually saving
+      const finalNumero = await getNextDocumentNumber('factures', isElectron, query, true);
+      
       const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const factureData: Facture = {
         id: facture?.id || uuidv4(),
-        numero: formData.numero,
+        numero: facture?.numero || finalNumero, // Use existing numero for edits, new numero for new invoices
         date: new Date(formData.date),
         dateEcheance: new Date(formData.dateEcheance),
         client: selectedClient,
