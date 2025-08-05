@@ -792,7 +792,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                           {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">
-                                {group.groupName} {group.rate ? `${group.rate}%` : ''}:
+                                {group.groupName}:
                               </span>
                               <span>{formatCurrency(group.taxAmount)}</span>
                             </div>

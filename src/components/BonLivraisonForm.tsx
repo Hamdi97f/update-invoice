@@ -773,11 +773,15 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                           {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">
-                                {group.groupName} {group.rate ? `${group.rate}%` : ''}:
+                                {group.groupName}:
                               </span>
                               <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
                           ))}
+                        </div>
+                        <div className="flex justify-between text-sm font-medium border-t pt-2">
+                          <span>Total taxes:</span>
+                          <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
