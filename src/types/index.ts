@@ -51,6 +51,7 @@ export interface TaxGroup {
   type: 'percentage' | 'fixed';
   value: number;
   calculationBase: 'HT' | 'HT_plus_previous_taxes';
+  applicableDocuments: ('factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur')[];
   order: number;
   isAutoCreated: boolean; // true if created from product tax rate
   isActive: boolean;

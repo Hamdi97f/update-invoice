@@ -284,7 +284,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
     // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'commandesFournisseur');
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };

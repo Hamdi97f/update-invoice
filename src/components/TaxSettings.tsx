@@ -14,6 +14,7 @@ const TaxSettings: React.FC = () => {
     type: 'percentage' as 'percentage' | 'fixed',
     value: 0,
     calculationBase: 'HT' as 'HT' | 'HT_plus_previous_taxes',
+    applicableDocuments: ['factures', 'devis', 'bonsLivraison', 'commandesFournisseur'] as ('factures' | 'devis' | 'bonsLivraison' | 'commandesFournisseur')[],
     order: 1,
     isActive: true
   });
@@ -41,6 +42,7 @@ const TaxSettings: React.FC = () => {
         type: row.type,
         value: row.value,
         calculationBase: row.calculationBase,
+        applicableDocuments: row.applicableDocuments ? JSON.parse(row.applicableDocuments) : ['factures', 'devis', 'bonsLivraison', 'commandesFournisseur'],
         order: row.order_index,
         isAutoCreated: Boolean(row.isAutoCreated),
         isActive: Boolean(row.isActive)
@@ -61,6 +63,7 @@ const TaxSettings: React.FC = () => {
       type: 'percentage',
       value: 0,
       calculationBase: 'HT',
+      applicableDocuments: ['factures', 'devis', 'bonsLivraison', 'commandesFournisseur'],
       order: Math.max(...taxGroups.map(t => t.order), 0) + 1,
       isActive: true
     });
@@ -68,17 +71,13 @@ const TaxSettings: React.FC = () => {
   };
 
   const handleEdit = (tax: TaxGroup) => {
-    if (tax.isAutoCreated) {
-      alert('Les taxes automatiques ne peuvent pas être modifiées. Elles sont créées automatiquement à partir des produits.');
-      return;
-    }
-    
     setEditingTax(tax);
     setFormData({
       name: tax.name,
       type: tax.type,
       value: tax.value,
       calculationBase: tax.calculationBase,
+      applicableDocuments: tax.applicableDocuments || ['factures', 'devis', 'bonsLivraison', 'commandesFournisseur'],
       order: tax.order,
       isActive: tax.isActive
     });
@@ -105,21 +104,23 @@ const TaxSettings: React.FC = () => {
         type: formData.type,
         value: formData.value,
         calculationBase: formData.calculationBase,
+        applicableDocuments: formData.applicableDocuments,
         order: formData.order,
-        isAutoCreated: false,
+        isAutoCreated: editingTax?.isAutoCreated || false,
         isActive: formData.isActive
       };
 
       await query(
         `INSERT OR REPLACE INTO tax_groups 
-         (id, name, type, value, calculationBase, order_index, isAutoCreated, isActive)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, name, type, value, calculationBase, applicableDocuments, order_index, isAutoCreated, isActive)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           taxData.id,
           taxData.name,
           taxData.type,
           taxData.value,
           taxData.calculationBase,
+          JSON.stringify(taxData.applicableDocuments),
           taxData.order,
           taxData.isAutoCreated ? 1 : 0,
           taxData.isActive ? 1 : 0
@@ -137,12 +138,6 @@ const TaxSettings: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!isReady) return;
-    
-    const tax = taxGroups.find(t => t.id === id);
-    if (tax?.isAutoCreated) {
-      alert('Les taxes automatiques ne peuvent pas être supprimées. Elles sont gérées automatiquement par les produits.');
-      return;
-    }
     
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette taxe ?')) {
       try {
@@ -269,6 +264,9 @@ const TaxSettings: React.FC = () => {
                 Base de calcul
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Documents
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Source
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -328,6 +326,19 @@ const TaxSettings: React.FC = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {tax.calculationBase === 'HT' ? 'HT seulement' : 'HT + taxes précédentes'}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex flex-wrap gap-1">
+                    {tax.applicableDocuments?.map(doc => (
+                      <span key={doc} className="inline-flex px-1 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">
+                        {doc === 'factures' ? 'Factures' : 
+                         doc === 'devis' ? 'Devis' :
+                         doc === 'bonsLivraison' ? 'BL' : 'CF'}
+                      </span>
+                    )) || (
+                      <span className="text-gray-400">Tous</span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                     tax.isAutoCreated ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
@@ -357,24 +368,20 @@ const TaxSettings: React.FC = () => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end space-x-2">
-                    {!tax.isAutoCreated && (
-                      <button
-                        onClick={() => handleEdit(tax)}
-                        className="text-indigo-600 hover:text-indigo-900 p-1 hover:bg-indigo-50 rounded transition-colors"
-                        title="Modifier"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                    )}
-                    {!tax.isAutoCreated && (
-                      <button
-                        onClick={() => handleDelete(tax.id)}
-                        className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleEdit(tax)}
+                      className="text-indigo-600 hover:text-indigo-900 p-1 hover:bg-indigo-50 rounded transition-colors"
+                      title="Modifier"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(tax.id)}
+                      className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -484,6 +491,42 @@ const TaxSettings: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-1">
                     Les taxes sont appliquées dans l'ordre croissant
                   </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Documents applicables *
+                  </label>
+                  <div className="space-y-2">
+                    {[
+                      { id: 'factures', label: 'Factures' },
+                      { id: 'devis', label: 'Devis' },
+                      { id: 'bonsLivraison', label: 'Bons de livraison' },
+                      { id: 'commandesFournisseur', label: 'Commandes fournisseur' }
+                    ].map(doc => (
+                      <label key={doc.id} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={formData.applicableDocuments.includes(doc.id as any)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormData(prev => ({
+                                ...prev,
+                                applicableDocuments: [...prev.applicableDocuments, doc.id as any]
+                              }));
+                            } else {
+                              setFormData(prev => ({
+                                ...prev,
+                                applicableDocuments: prev.applicableDocuments.filter(d => d !== doc.id)
+                              }));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">{doc.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex items-center">

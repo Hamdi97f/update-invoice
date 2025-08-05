@@ -378,6 +378,21 @@ function addMissingColumns() {
       db.exec("ALTER TABLE bons_livraison ADD COLUMN totalTTC REAL DEFAULT 0");
     }
 
+    // Check tax_groups table for applicableDocuments column
+    const taxGroupsTableInfo = db.prepare("PRAGMA table_info(tax_groups)").all();
+    const hasApplicableDocumentsColumn = taxGroupsTableInfo.some(col => col.name === 'applicableDocuments');
+    
+    if (!hasApplicableDocumentsColumn) {
+      log.info("Adding 'applicableDocuments' column to tax_groups table");
+      db.exec("ALTER TABLE tax_groups ADD COLUMN applicableDocuments TEXT DEFAULT '[]'");
+      
+      // Update existing tax groups with default applicable documents
+      db.exec(`
+        UPDATE tax_groups 
+        SET applicableDocuments = '["factures","devis","bonsLivraison","commandesFournisseur"]' 
+        WHERE applicableDocuments = '[]' OR applicableDocuments IS NULL
+      `);
+    }
     log.info('Missing columns added successfully');
     
   } catch (error) {

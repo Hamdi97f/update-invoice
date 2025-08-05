@@ -289,7 +289,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
     
     // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'bonsLivraison');
     const totalTTC = totalHT + totalTaxes;
     
     return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };

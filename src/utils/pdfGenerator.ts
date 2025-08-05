@@ -427,7 +427,7 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   // Show tax groups summary
   if (documentData.taxGroupsSummary && documentData.taxGroupsSummary.length > 0) {
     documentData.taxGroupsSummary.forEach((group: any) => {
-      const taxLabel = group.rate ? `${group.groupName} ${group.rate}%` : group.groupName;
+      const taxLabel = group.groupName; // Already includes rate in the name like "TVA 19%"
       doc.text(`${taxLabel}:`, rightX - 50, currentY);
       doc.text(formatCurrency(group.taxAmount), rightX, currentY, { align: 'right' });
       currentY += settings.spacing.line;

@@ -394,7 +394,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
     
     // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'factures');
     const totalTTC = totalHT + totalTaxes;
     
     return { 

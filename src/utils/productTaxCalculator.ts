@@ -311,16 +311,17 @@ export const ensureTaxGroupForProduct = async (
     
     if (existing.length === 0) {
       // Create new auto group
-      const newGroup = autoCreateTaxGroupFromProduct(productTaxRate);
+      const newGroup = autoCreateTaxGroupFromProduct(productTaxRate, ['factures', 'devis', 'bonsLivraison', 'commandesFournisseur']);
       await query(
-        `INSERT INTO tax_groups (id, name, type, value, calculationBase, order_index, isAutoCreated, isActive)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tax_groups (id, name, type, value, calculationBase, applicableDocuments, order_index, isAutoCreated, isActive)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newGroup.id,
           newGroup.name,
           newGroup.type,
           newGroup.value,
           newGroup.calculationBase,
+          JSON.stringify(newGroup.applicableDocuments),
           newGroup.order,
           newGroup.isAutoCreated ? 1 : 0,
           newGroup.isActive ? 1 : 0
