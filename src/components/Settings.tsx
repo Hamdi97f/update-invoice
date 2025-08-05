@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, FileText, Receipt, Truck, ShoppingCart, Settings as SettingsIcon, Calculator, Palette, Upload, Eye, RefreshCw, Info, Database, Download, Upload as UploadIcon, Shield } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
-import TaxConfiguration from './TaxConfiguration';
 import DocumentTemplateSettings from './DocumentTemplateSettings';
 import { Tax } from '../types';
 
