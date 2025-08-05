@@ -144,8 +144,8 @@ export const calculateTaxesByGroup = (
           });
         }
         
-          groupId: `tva_${productTaxRate}`,
-          groupName: productTaxRate === 0 ? 'Exonéré TVA' : `TVA ${productTaxRate}%`,
+        const groupSummary = groupsMap.get(groupKey)!;
+        groupSummary.baseAmount += ligne.montantHT;
         groupSummary.products.push({
           productId: ligne.produit.id,
           productName: ligne.produit.nom,
@@ -153,12 +153,14 @@ export const calculateTaxesByGroup = (
           htAmount: ligne.montantHT
         });
       }
-    
-      // Calculate tax for this group
-      if (productTaxRate > 0) {
-        groupSummary.taxAmount = (groupSummary.baseAmount * productTaxRate) / 100;
-        totalTaxes += groupSummary.taxAmount;
-      }
+    }
+  }
+  
+  // Second pass: calculate tax amounts
+  for (const [groupKey, groupSummary] of groupsMap) {
+    if (groupSummary.rate && groupSummary.rate > 0) {
+      groupSummary.taxAmount = (groupSummary.baseAmount * groupSummary.rate) / 100;
+      totalTaxes += groupSummary.taxAmount;
     }
   }
   
