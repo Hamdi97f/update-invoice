@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, FileText, Receipt, Truck, ShoppingCart, Settings as SettingsIcon, Calculator, Palette, Upload, Eye, RefreshCw, Info, Database, Download, Upload as UploadIcon, Shield } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
+import TaxSettings from './TaxSettings';
 import DocumentTemplateSettings from './DocumentTemplateSettings';
 import { Tax } from '../types';
 
@@ -1115,7 +1116,7 @@ const Settings: React.FC = () => {
 
       {activeTab === 'taxes' && (
         <div className="bg-white rounded-lg shadow-sm border p-6">
-          <TaxConfiguration onTaxesChange={setTaxes} />
+          <TaxSettings onTaxesChange={setTaxes} />
         </div>
       )}
 
