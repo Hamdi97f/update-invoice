@@ -124,6 +124,8 @@ function updateDatabaseSchema() {
         description TEXT DEFAULT '',
         prixUnitaire REAL NOT NULL,
         tva REAL DEFAULT 19,
+        fodecApplicable BOOLEAN DEFAULT 0,
+        tauxFodec REAL DEFAULT 1,
         stock INTEGER DEFAULT 0,
         type TEXT DEFAULT 'vente',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -136,6 +138,7 @@ function updateDatabaseSchema() {
         dateEcheance TEXT NOT NULL,
         clientId TEXT NOT NULL,
         totalHT REAL NOT NULL,
+        totalFodec REAL DEFAULT 0,
         totalTVA REAL NOT NULL,
         totalTTC REAL NOT NULL,
         statut TEXT DEFAULT 'brouillon',
@@ -152,6 +155,9 @@ function updateDatabaseSchema() {
         prixUnitaire REAL NOT NULL,
         remise REAL DEFAULT 0,
         montantHT REAL NOT NULL,
+        montantFodec REAL DEFAULT 0,
+        baseTVA REAL DEFAULT 0,
+        montantTVA REAL DEFAULT 0,
         montantTTC REAL NOT NULL,
         FOREIGN KEY (factureId) REFERENCES factures (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
@@ -164,6 +170,7 @@ function updateDatabaseSchema() {
         dateValidite TEXT NOT NULL,
         clientId TEXT NOT NULL,
         totalHT REAL NOT NULL,
+        totalFodec REAL DEFAULT 0,
         totalTVA REAL NOT NULL,
         totalTTC REAL NOT NULL,
         statut TEXT DEFAULT 'brouillon',
@@ -180,6 +187,9 @@ function updateDatabaseSchema() {
         prixUnitaire REAL NOT NULL,
         remise REAL DEFAULT 0,
         montantHT REAL NOT NULL,
+        montantFodec REAL DEFAULT 0,
+        baseTVA REAL DEFAULT 0,
+        montantTVA REAL DEFAULT 0,
         montantTTC REAL NOT NULL,
         FOREIGN KEY (devisId) REFERENCES devis (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
@@ -194,6 +204,7 @@ function updateDatabaseSchema() {
         factureId TEXT,
         notes TEXT DEFAULT '',
         totalHT REAL DEFAULT 0,
+        totalFodec REAL DEFAULT 0,
         totalTVA REAL DEFAULT 0,
         totalTTC REAL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -217,6 +228,7 @@ function updateDatabaseSchema() {
         dateReception TEXT NOT NULL,
         fournisseurId TEXT NOT NULL,
         totalHT REAL NOT NULL,
+        totalFodec REAL DEFAULT 0,
         totalTVA REAL NOT NULL,
         totalTTC REAL NOT NULL,
         statut TEXT DEFAULT 'brouillon',
@@ -233,6 +245,9 @@ function updateDatabaseSchema() {
         prixUnitaire REAL NOT NULL,
         remise REAL DEFAULT 0,
         montantHT REAL NOT NULL,
+        montantFodec REAL DEFAULT 0,
+        baseTVA REAL DEFAULT 0,
+        montantTVA REAL DEFAULT 0,
         montantTTC REAL NOT NULL,
         FOREIGN KEY (commandeId) REFERENCES commandes_fournisseur (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
@@ -367,15 +382,34 @@ function addMissingColumns() {
       db.exec("ALTER TABLE produits ADD COLUMN type TEXT DEFAULT 'vente'");
     }
 
+    // Check produits table for FODEC columns
+    const hasFodecApplicableColumn = produitsTableInfo.some(col => col.name === 'fodecApplicable');
+    const hasTauxFodecColumn = produitsTableInfo.some(col => col.name === 'tauxFodec');
+    
+    if (!hasFodecApplicableColumn) {
+      log.info("Adding 'fodecApplicable' column to produits table");
+      db.exec("ALTER TABLE produits ADD COLUMN fodecApplicable BOOLEAN DEFAULT 0");
+    }
+    
+    if (!hasTauxFodecColumn) {
+      log.info("Adding 'tauxFodec' column to produits table");
+      db.exec("ALTER TABLE produits ADD COLUMN tauxFodec REAL DEFAULT 1");
+    }
+
     // Check bons_livraison table for total columns
     const blTableInfo = db.prepare("PRAGMA table_info(bons_livraison)").all();
     const hasTotalHTColumn = blTableInfo.some(col => col.name === 'totalHT');
+    const hasTotalFodecColumn = blTableInfo.some(col => col.name === 'totalFodec');
     
     if (!hasTotalHTColumn) {
       log.info("Adding total columns to bons_livraison table");
       db.exec("ALTER TABLE bons_livraison ADD COLUMN totalHT REAL DEFAULT 0");
+      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalFodec REAL DEFAULT 0");
       db.exec("ALTER TABLE bons_livraison ADD COLUMN totalTVA REAL DEFAULT 0");
       db.exec("ALTER TABLE bons_livraison ADD COLUMN totalTTC REAL DEFAULT 0");
+    } else if (!hasTotalFodecColumn) {
+      log.info("Adding 'totalFodec' column to bons_livraison table");
+      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalFodec REAL DEFAULT 0");
     }
 
     // Check tax_groups table for applicableDocuments column
@@ -415,14 +449,14 @@ function insertSampleData() {
     
     // Sample products
     const insertProduit = db.prepare(`
-      INSERT INTO produits (id, ref, nom, description, prixUnitaire, tva, stock, type)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO produits (id, ref, nom, description, prixUnitaire, tva, fodecApplicable, tauxFodec, stock, type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
-    insertProduit.run(uuidv4(), 'V0001', 'Consultation', 'Conseil en informatique', 500, 19, 0, 'vente');
-    insertProduit.run(uuidv4(), 'V0002', 'Développement web', 'Site vitrine responsive', 1500, 19, 0, 'vente');
-    insertProduit.run(uuidv4(), 'A0001', 'Hébergement serveur', 'Hébergement mensuel', 200, 19, 0, 'achat');
-    insertProduit.run(uuidv4(), 'A0002', 'Licence logiciel', 'Licence annuelle', 800, 19, 0, 'achat');
+    insertProduit.run(uuidv4(), 'V0001', 'Consultation', 'Conseil en informatique', 500, 19, 0, 1, 0, 'vente');
+    insertProduit.run(uuidv4(), 'V0002', 'Développement web', 'Site vitrine responsive', 1500, 19, 0, 1, 0, 'vente');
+    insertProduit.run(uuidv4(), 'A0001', 'Hébergement serveur', 'Hébergement mensuel', 200, 19, 0, 1, 0, 'achat');
+    insertProduit.run(uuidv4(), 'A0002', 'Licence logiciel', 'Licence annuelle', 800, 19, 0, 1, 0, 'achat');
     
     // Sample fournisseurs
     const insertFournisseur = db.prepare(`

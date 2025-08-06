@@ -30,6 +30,8 @@ export interface Produit {
   description: string;
   prixUnitaire: number;
   tva: number;
+  fodecApplicable: boolean; // NEW: FODEC applicable
+  tauxFodec: number; // NEW: FODEC rate (default 1%)
   stock?: number;
   type: 'vente' | 'achat'; // NEW: Product type
 }
@@ -72,23 +74,17 @@ export interface LigneDocument {
   prixUnitaire: number;
   remise: number;
   montantHT: number;
+  montantFodec: number; // NEW: FODEC amount
+  baseTVA: number; // NEW: TVA calculation base (HT + FODEC)
+  montantTVA: number; // NEW: TVA amount
   montantTTC: number;
-  taxCalculations?: ProductTaxCalculation[];
 }
 
 export interface TaxGroupSummary {
-  groupId: string;
-  groupName: string;
-  type: 'percentage' | 'fixed';
-  rate?: number;
+  type: 'FODEC' | 'TVA';
+  rate: number;
   baseAmount: number;
   taxAmount: number;
-  products: {
-    productId: string;
-    productName: string;
-    quantity: number;
-    htAmount: number;
-  }[];
 }
 
 export interface Facture {
@@ -99,8 +95,8 @@ export interface Facture {
   client: Client;
   lignes: LigneDocument[];
   totalHT: number;
-  taxGroupsSummary: TaxGroupSummary[];
-  totalTaxes: number;
+  totalFodec: number; // NEW: Total FODEC
+  totalTVA: number; // NEW: Total TVA
   totalTTC: number;
   statut: 'brouillon' | 'envoyee' | 'payee' | 'annulee';
   notes?: string;
@@ -114,8 +110,8 @@ export interface Devis {
   client: Client;
   lignes: LigneDocument[];
   totalHT: number;
-  taxGroupsSummary: TaxGroupSummary[];
-  totalTaxes: number;
+  totalFodec: number; // NEW: Total FODEC
+  totalTVA: number; // NEW: Total TVA
   totalTTC: number;
   statut: 'brouillon' | 'envoye' | 'accepte' | 'refuse' | 'expire';
   notes?: string;
@@ -131,8 +127,8 @@ export interface BonLivraison {
   factureId?: string;
   notes?: string;
   totalHT?: number;
-  taxGroupsSummary?: TaxGroupSummary[];
-  totalTaxes?: number;
+  totalFodec?: number; // NEW: Total FODEC
+  totalTVA?: number; // NEW: Total TVA
   totalTTC?: number;
 }
 
@@ -144,8 +140,8 @@ export interface CommandeFournisseur {
   fournisseur: Fournisseur;
   lignes: LigneDocument[];
   totalHT: number;
-  taxGroupsSummary: TaxGroupSummary[];
-  totalTaxes: number;
+  totalFodec: number; // NEW: Total FODEC
+  totalTVA: number; // NEW: Total TVA
   totalTTC: number;
   statut: 'brouillon' | 'envoyee' | 'confirmee' | 'recue' | 'annulee';
   notes?: string;

@@ -19,6 +19,8 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
     description: '',
     prixUnitaire: 0,
     tva: 19,
+    fodecApplicable: false,
+    tauxFodec: 1,
     stock: 0,
     type: defaultType as 'vente' | 'achat'
   });
@@ -37,6 +39,8 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
           description: produit.description || '',
           prixUnitaire: produit.prixUnitaire,
           tva: produit.tva,
+          fodecApplicable: produit.fodecApplicable || false,
+          tauxFodec: produit.tauxFodec || 1,
           stock: produit.stock || 0,
           type: produit.type || 'vente' // Default to 'vente' for backward compatibility
         });
@@ -49,6 +53,8 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
           description: '',
           prixUnitaire: 0,
           tva: 19,
+          fodecApplicable: false,
+          tauxFodec: 1,
           stock: 0,
           type: defaultType
         });
@@ -110,14 +116,16 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
         description: formData.description.trim(),
         prixUnitaire: formData.prixUnitaire,
         tva: formData.tva,
+        fodecApplicable: formData.fodecApplicable,
+        tauxFodec: formData.tauxFodec,
         stock: formData.stock,
         type: formData.type
       };
 
       await query(
         `INSERT OR REPLACE INTO produits 
-         (id, ref, nom, description, prixUnitaire, tva, stock, type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, ref, nom, description, prixUnitaire, tva, fodecApplicable, tauxFodec, stock, type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           produitData.id,
           produitData.ref || null,
@@ -125,6 +133,8 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
           produitData.description,
           produitData.prixUnitaire,
           produitData.tva,
+          produitData.fodecApplicable ? 1 : 0,
+          produitData.tauxFodec,
           produitData.stock,
           produitData.type
         ]
@@ -329,6 +339,64 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
                 <option value={19}>19%</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                FODEC applicable
+              </label>
+              <div className="flex items-center space-x-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="fodecApplicable"
+                    checked={formData.fodecApplicable === true}
+                    onChange={() => handleChange('fodecApplicable', true)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={isSubmitting}
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Oui</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="fodecApplicable"
+                    checked={formData.fodecApplicable === false}
+                    onChange={() => handleChange('fodecApplicable', false)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={isSubmitting}
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Non</span>
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                FODEC obligatoire pour les produits industriels locaux
+              </p>
+            </div>
+
+            {formData.fodecApplicable && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Taux FODEC (%)
+                </label>
+                <input
+                  type="number"
+                  value={formData.tauxFodec}
+                  onChange={(e) => handleChange('tauxFodec', parseFloat(e.target.value) || 1)}
+                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:border-transparent ${
+                    formData.type === 'vente' 
+                      ? 'border-green-300 focus:ring-green-500' 
+                      : 'border-purple-300 focus:ring-purple-500'
+                  }`}
+                  step="0.1"
+                  min="0"
+                  max="10"
+                  disabled={isSubmitting}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Taux par défaut: 1%
+                </p>
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
