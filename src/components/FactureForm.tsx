@@ -528,6 +528,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
   };
 
   const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalFodec, totalTVA } = calculateTotals();
 
   if (!isOpen) return null;
 
