@@ -324,7 +324,7 @@ const TaxSettings: React.FC = () => {
                   {tax.value}{tax.type === 'percentage' ? '%' : ' TND'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {tax.calculationBase === 'HT' ? 'HT seulement' : 'HT + taxes précédentes'}
+                  {tax.calculationBase === 'HT' ? 'Total HT (même TVA) + taxe' : 'Total HT (même TVA) + taxe'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <div className="flex flex-wrap gap-1">
