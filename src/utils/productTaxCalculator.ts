@@ -181,10 +181,8 @@ export const calculateTaxesByGroup = (
   for (const manualGroup of manualTaxGroups) {
     let baseAmount = 0;
     
-    if (manualGroup.calculationBase === 'HT') {
+    if (manualGroup.calculationBase === 'HT' || manualGroup.calculationBase === 'HT_plus_previous_taxes') {
       baseAmount = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    } else if (manualGroup.calculationBase === 'HT_plus_previous_taxes') {
-      baseAmount = runningTotal;
     }
     
     let taxAmount = 0;
