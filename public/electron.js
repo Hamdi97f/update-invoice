@@ -350,215 +350,104 @@ function addMissingColumns() {
       );
     `);
     
-    // Check clients table for code column
-    const clientsTableInfo = db.prepare("PRAGMA table_info(clients)").all();
-    const hasCodeColumn = clientsTableInfo.some(col => col.name === 'code');
-    const hasMatriculeFiscalColumn = clientsTableInfo.some(col => col.name === 'matriculeFiscal');
+    // Helper function to safely add column if it doesn't exist
+    const addColumnIfNotExists = (tableName, columnName, columnDefinition) => {
+      try {
+        const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
+        const hasColumn = tableInfo.some(col => col.name === columnName);
+        
+        if (!hasColumn) {
+          log.info(`Adding '${columnName}' column to ${tableName} table`);
+          db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+        }
+      } catch (error) {
+        log.error(`Error adding column ${columnName} to ${tableName}:`, error);
+      }
+    };
     
-    if (!hasCodeColumn) {
-      log.info("Adding 'code' column to clients table");
-      db.exec("ALTER TABLE clients ADD COLUMN code TEXT");
-      
-      // Update existing clients with generated codes
-      const clients = db.prepare("SELECT id FROM clients WHERE code IS NULL OR code = ''").all();
-      const updateClient = db.prepare("UPDATE clients SET code = ? WHERE id = ?");
-      
-      clients.forEach((client, index) => {
-        const code = `CL${String(index + 1).padStart(4, '0')}`;
-        updateClient.run(code, client.id);
-      });
-      
-      // Make code column unique after updating
-      db.exec(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_code ON clients(code);
-      `);
+    // Add missing columns to clients table
+    addColumnIfNotExists('clients', 'code', 'TEXT');
+    addColumnIfNotExists('clients', 'matriculeFiscal', 'TEXT DEFAULT ""');
+    
+    // Update existing clients with generated codes if needed
+    try {
+      const clientsWithoutCode = db.prepare("SELECT id FROM clients WHERE code IS NULL OR code = ''").all();
+      if (clientsWithoutCode.length > 0) {
+        const updateClient = db.prepare("UPDATE clients SET code = ? WHERE id = ?");
+        clientsWithoutCode.forEach((client, index) => {
+          const code = `CL${String(index + 1).padStart(4, '0')}`;
+          updateClient.run(code, client.id);
+        });
+        
+        // Create unique index if it doesn't exist
+        db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_code ON clients(code)`);
+      }
+    } catch (error) {
+      log.error('Error updating client codes:', error);
     }
     
-    if (!hasMatriculeFiscalColumn) {
-      log.info("Adding 'matriculeFiscal' column to clients table");
-      db.exec("ALTER TABLE clients ADD COLUMN matriculeFiscal TEXT DEFAULT ''");
-    }
+    // Add missing columns to fournisseurs table
+    addColumnIfNotExists('fournisseurs', 'matriculeFiscal', 'TEXT DEFAULT ""');
     
-    // Check fournisseurs table for matriculeFiscal column
-    const fournisseursTableInfo = db.prepare("PRAGMA table_info(fournisseurs)").all();
-    const hasFournisseurMatriculeFiscalColumn = fournisseursTableInfo.some(col => col.name === 'matriculeFiscal');
+    // Add missing columns to produits table
+    addColumnIfNotExists('produits', 'ref', 'TEXT');
+    addColumnIfNotExists('produits', 'type', 'TEXT DEFAULT "vente"');
+    addColumnIfNotExists('produits', 'fodecApplicable', 'BOOLEAN DEFAULT 0');
+    addColumnIfNotExists('produits', 'tauxFodec', 'REAL DEFAULT 1');
     
-    if (!hasFournisseurMatriculeFiscalColumn) {
-      log.info("Adding 'matriculeFiscal' column to fournisseurs table");
-      db.exec("ALTER TABLE fournisseurs ADD COLUMN matriculeFiscal TEXT DEFAULT ''");
-    }
-
-    // Check produits table for ref and type columns
-    const produitsTableInfo = db.prepare("PRAGMA table_info(produits)").all();
-    const hasRefColumn = produitsTableInfo.some(col => col.name === 'ref');
-    const hasTypeColumn = produitsTableInfo.some(col => col.name === 'type');
+    // Add missing columns to factures table
+    addColumnIfNotExists('factures', 'totalFodec', 'REAL DEFAULT 0');
     
-    if (!hasRefColumn) {
-      log.info("Adding 'ref' column to produits table");
-      db.exec("ALTER TABLE produits ADD COLUMN ref TEXT");
-    }
+    // Add missing columns to devis table
+    addColumnIfNotExists('devis', 'totalFodec', 'REAL DEFAULT 0');
     
-    if (!hasTypeColumn) {
-      log.info("Adding 'type' column to produits table");
-      db.exec("ALTER TABLE produits ADD COLUMN type TEXT DEFAULT 'vente'");
-    }
-
-    // Check produits table for FODEC columns
-    const hasFodecApplicableColumn = produitsTableInfo.some(col => col.name === 'fodecApplicable');
-    const hasTauxFodecColumn = produitsTableInfo.some(col => col.name === 'tauxFodec');
+    // Add missing columns to commandes_fournisseur table
+    addColumnIfNotExists('commandes_fournisseur', 'totalFodec', 'REAL DEFAULT 0');
     
-    if (!hasFodecApplicableColumn) {
-      log.info("Adding 'fodecApplicable' column to produits table");
-      db.exec("ALTER TABLE produits ADD COLUMN fodecApplicable BOOLEAN DEFAULT 0");
-    }
+    // Add missing columns to lignes_facture table
+    addColumnIfNotExists('lignes_facture', 'montantFodec', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_facture', 'baseTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_facture', 'montantTVA', 'REAL DEFAULT 0');
     
-    if (!hasTauxFodecColumn) {
-      log.info("Adding 'tauxFodec' column to produits table");
-      db.exec("ALTER TABLE produits ADD COLUMN tauxFodec REAL DEFAULT 1");
-    }
-
-    // Check factures table for FODEC columns
-    const facturesTableInfo = db.prepare("PRAGMA table_info(factures)").all();
-    const hasFacturesTotalFodecColumn = facturesTableInfo.some(col => col.name === 'totalFodec');
+    // Add missing columns to lignes_devis table
+    addColumnIfNotExists('lignes_devis', 'montantFodec', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_devis', 'baseTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_devis', 'montantTVA', 'REAL DEFAULT 0');
     
-    if (!hasFacturesTotalFodecColumn) {
-      log.info("Adding 'totalFodec' column to factures table");
-      db.exec("ALTER TABLE factures ADD COLUMN totalFodec REAL DEFAULT 0");
-    }
-
-    // Check devis table for FODEC columns
-    const devisTableInfo = db.prepare("PRAGMA table_info(devis)").all();
-    const hasDevisTotalFodecColumn = devisTableInfo.some(col => col.name === 'totalFodec');
+    // Add missing columns to lignes_bon_livraison table
+    addColumnIfNotExists('lignes_bon_livraison', 'prixUnitaire', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_bon_livraison', 'remise', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_bon_livraison', 'montantHT', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_bon_livraison', 'montantFodec', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_bon_livraison', 'baseTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_bon_livraison', 'montantTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_bon_livraison', 'montantTTC', 'REAL DEFAULT 0');
     
-    if (!hasDevisTotalFodecColumn) {
-      log.info("Adding 'totalFodec' column to devis table");
-      db.exec("ALTER TABLE devis ADD COLUMN totalFodec REAL DEFAULT 0");
-    }
-
-    // Check commandes_fournisseur table for FODEC columns
-    const commandesTableInfo = db.prepare("PRAGMA table_info(commandes_fournisseur)").all();
-    const hasCommandesTotalFodecColumn = commandesTableInfo.some(col => col.name === 'totalFodec');
+    // Add missing columns to lignes_commande_fournisseur table
+    addColumnIfNotExists('lignes_commande_fournisseur', 'montantFodec', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_commande_fournisseur', 'baseTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('lignes_commande_fournisseur', 'montantTVA', 'REAL DEFAULT 0');
     
-    if (!hasCommandesTotalFodecColumn) {
-      log.info("Adding 'totalFodec' column to commandes_fournisseur table");
-      db.exec("ALTER TABLE commandes_fournisseur ADD COLUMN totalFodec REAL DEFAULT 0");
-    }
-
-    // Check lignes_facture table for FODEC columns
-    const lignesFactureTableInfo = db.prepare("PRAGMA table_info(lignes_facture)").all();
-    const hasLignesFactureFodecColumns = lignesFactureTableInfo.some(col => col.name === 'montantFodec');
-    const hasLignesFactureBaseTVAColumn = lignesFactureTableInfo.some(col => col.name === 'baseTVA');
-    const hasLignesFactureMontantTVAColumn = lignesFactureTableInfo.some(col => col.name === 'montantTVA');
+    // Add missing columns to bons_livraison table
+    addColumnIfNotExists('bons_livraison', 'totalHT', 'REAL DEFAULT 0');
+    addColumnIfNotExists('bons_livraison', 'totalFodec', 'REAL DEFAULT 0');
+    addColumnIfNotExists('bons_livraison', 'totalTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('bons_livraison', 'totalTTC', 'REAL DEFAULT 0');
     
-    if (!hasLignesFactureFodecColumns) {
-      log.info("Adding FODEC columns to lignes_facture table");
-      db.exec("ALTER TABLE lignes_facture ADD COLUMN montantFodec REAL DEFAULT 0");
-    }
+    // Add missing columns to tax_groups table
+    addColumnIfNotExists('tax_groups', 'applicableDocuments', 'TEXT DEFAULT "[]"');
     
-    if (!hasLignesFactureBaseTVAColumn) {
-      log.info("Adding baseTVA column to lignes_facture table");
-      db.exec("ALTER TABLE lignes_facture ADD COLUMN baseTVA REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesFactureMontantTVAColumn) {
-      log.info("Adding montantTVA column to lignes_facture table");
-      db.exec("ALTER TABLE lignes_facture ADD COLUMN montantTVA REAL DEFAULT 0");
-    }
-
-    // Check lignes_devis table for FODEC columns
-    const lignesDevisTableInfo = db.prepare("PRAGMA table_info(lignes_devis)").all();
-    const hasLignesDevisFodecColumns = lignesDevisTableInfo.some(col => col.name === 'montantFodec');
-    const hasLignesDevisBaseTVAColumn = lignesDevisTableInfo.some(col => col.name === 'baseTVA');
-    const hasLignesDevisMontantTVAColumn = lignesDevisTableInfo.some(col => col.name === 'montantTVA');
-    
-    if (!hasLignesDevisFodecColumns) {
-      log.info("Adding FODEC columns to lignes_devis table");
-      db.exec("ALTER TABLE lignes_devis ADD COLUMN montantFodec REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesDevisBaseTVAColumn) {
-      log.info("Adding baseTVA column to lignes_devis table");
-      db.exec("ALTER TABLE lignes_devis ADD COLUMN baseTVA REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesDevisMontantTVAColumn) {
-      log.info("Adding montantTVA column to lignes_devis table");
-      db.exec("ALTER TABLE lignes_devis ADD COLUMN montantTVA REAL DEFAULT 0");
-    }
-
-    // Check lignes_bon_livraison table for FODEC columns
-    const lignesBLTableInfo = db.prepare("PRAGMA table_info(lignes_bon_livraison)").all();
-    const hasLignesBLFodecColumns = lignesBLTableInfo.some(col => col.name === 'montantFodec');
-    const hasLignesBLBaseTVAColumn = lignesBLTableInfo.some(col => col.name === 'baseTVA');
-    const hasLignesBLMontantTVAColumn = lignesBLTableInfo.some(col => col.name === 'montantTVA');
-    
-    if (!hasLignesBLFodecColumns) {
-      log.info("Adding FODEC columns to lignes_bon_livraison table");
-      db.exec("ALTER TABLE lignes_bon_livraison ADD COLUMN montantFodec REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesBLBaseTVAColumn) {
-      log.info("Adding baseTVA column to lignes_bon_livraison table");
-      db.exec("ALTER TABLE lignes_bon_livraison ADD COLUMN baseTVA REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesBLMontantTVAColumn) {
-      log.info("Adding montantTVA column to lignes_bon_livraison table");
-      db.exec("ALTER TABLE lignes_bon_livraison ADD COLUMN montantTVA REAL DEFAULT 0");
-    }
-
-    // Check lignes_commande_fournisseur table for FODEC columns
-    const lignesCFTableInfo = db.prepare("PRAGMA table_info(lignes_commande_fournisseur)").all();
-    const hasLignesCFFodecColumns = lignesCFTableInfo.some(col => col.name === 'montantFodec');
-    const hasLignesCFBaseTVAColumn = lignesCFTableInfo.some(col => col.name === 'baseTVA');
-    const hasLignesCFMontantTVAColumn = lignesCFTableInfo.some(col => col.name === 'montantTVA');
-    
-    if (!hasLignesCFFodecColumns) {
-      log.info("Adding FODEC columns to lignes_commande_fournisseur table");
-      db.exec("ALTER TABLE lignes_commande_fournisseur ADD COLUMN montantFodec REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesCFBaseTVAColumn) {
-      log.info("Adding baseTVA column to lignes_commande_fournisseur table");
-      db.exec("ALTER TABLE lignes_commande_fournisseur ADD COLUMN baseTVA REAL DEFAULT 0");
-    }
-    
-    if (!hasLignesCFMontantTVAColumn) {
-      log.info("Adding montantTVA column to lignes_commande_fournisseur table");
-      db.exec("ALTER TABLE lignes_commande_fournisseur ADD COLUMN montantTVA REAL DEFAULT 0");
-    }
-
-    // Check bons_livraison table for total columns
-    const blTableInfo = db.prepare("PRAGMA table_info(bons_livraison)").all();
-    const hasTotalHTColumn = blTableInfo.some(col => col.name === 'totalHT');
-    const hasTotalFodecColumn = blTableInfo.some(col => col.name === 'totalFodec');
-    
-    if (!hasTotalHTColumn) {
-      log.info("Adding total columns to bons_livraison table");
-      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalHT REAL DEFAULT 0");
-      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalFodec REAL DEFAULT 0");
-      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalTVA REAL DEFAULT 0");
-      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalTTC REAL DEFAULT 0");
-    } else if (!hasTotalFodecColumn) {
-      log.info("Adding 'totalFodec' column to bons_livraison table");
-      db.exec("ALTER TABLE bons_livraison ADD COLUMN totalFodec REAL DEFAULT 0");
-    }
-
-    // Check tax_groups table for applicableDocuments column
-    const taxGroupsTableInfo = db.prepare("PRAGMA table_info(tax_groups)").all();
-    const hasApplicableDocumentsColumn = taxGroupsTableInfo.some(col => col.name === 'applicableDocuments');
-    
-    if (!hasApplicableDocumentsColumn) {
-      log.info("Adding 'applicableDocuments' column to tax_groups table");
-      db.exec("ALTER TABLE tax_groups ADD COLUMN applicableDocuments TEXT DEFAULT '[]'");
-      
-      // Update existing tax groups with default applicable documents
+    // Update existing tax groups with default applicable documents
+    try {
       db.exec(`
         UPDATE tax_groups 
         SET applicableDocuments = '["factures","devis","bonsLivraison","commandesFournisseur"]' 
         WHERE applicableDocuments = '[]' OR applicableDocuments IS NULL
       `);
+    } catch (error) {
+      log.error('Error updating tax groups:', error);
     }
+    
     log.info('Missing columns added successfully');
     
   } catch (error) {
