@@ -121,7 +121,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
 
   // Recalculate taxes when lines change
   useEffect(() => {
-    recalculateTaxes();
+    // For Bon de Livraison, taxes are already calculated in product lines
+    // No need to recalculate global taxes to avoid double taxation
   }, [lignes, taxGroups]);
 
   const loadClients = async () => {
@@ -177,17 +178,6 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     } catch (error) {
       console.error('Error loading tax groups:', error);
     }
-  };
-
-  const recalculateTaxes = () => {
-    if (lignes.length === 0) {
-      setTaxGroupsSummary([]);
-      return;
-    }
-
-    // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
-    setTaxGroupsSummary(taxGroupsSummary);
   };
 
   // Filter clients based on search term
@@ -272,11 +262,24 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     }
 
     // Recalculate amounts
-    const montantHT = ligne.quantite * ligne.produit.prixUnitaire;
+    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
     ligne.montantHT = montantHT;
     
-    // Calculate TTC for this line based on product tax rate
-    ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
+    // Calculate FODEC
+    const montantFodec = ligne.produit.fodecApplicable ? 
+      montantHT * (ligne.produit.tauxFodec / 100) : 0;
+    ligne.montantFodec = montantFodec;
+    
+    // Calculate TVA base (HT + FODEC)
+    const baseTVA = montantHT + montantFodec;
+    ligne.baseTVA = baseTVA;
+    
+    // Calculate TVA
+    const montantTVA = baseTVA * (ligne.produit.tva / 100);
+    ligne.montantTVA = montantTVA;
+    
+    // Calculate TTC
+    ligne.montantTTC = montantHT + montantFodec + montantTVA;
 
     setLignes(newLignes);
   };
@@ -286,13 +289,73 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   };
 
   const calculateTotals = () => {
-    const totalHT = lignes.reduce((sum, ligne) => sum + (ligne.quantite * ligne.produit.prixUnitaire), 0);
+    // Calculate totals from product lines (taxes already included)
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    const totalFodec = lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
+    const totalTVA = lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
+    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     
-    // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'bonsLivraison');
-    const totalTTC = totalHT + totalTaxes;
+    // Create tax summary for display
+    const taxSummary = [];
     
-    return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };
+    // Add FODEC summary if applicable
+    if (totalFodec > 0) {
+      const fodecGroups = new Map();
+      lignes.forEach(ligne => {
+        if (ligne.produit.fodecApplicable && ligne.montantFodec > 0) {
+          const rate = ligne.produit.tauxFodec;
+          if (!fodecGroups.has(rate)) {
+            fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+          }
+          const group = fodecGroups.get(rate);
+          group.baseAmount += ligne.montantHT;
+          group.taxAmount += ligne.montantFodec;
+        }
+      });
+      
+      fodecGroups.forEach((group, rate) => {
+        taxSummary.push({
+          type: 'FODEC',
+          rate,
+          baseAmount: group.baseAmount,
+          taxAmount: group.taxAmount
+        });
+      });
+    }
+    
+    // Add TVA summary if applicable
+    if (totalTVA > 0) {
+      const tvaGroups = new Map();
+      lignes.forEach(ligne => {
+        if (ligne.produit.tva > 0) {
+          const rate = ligne.produit.tva;
+          if (!tvaGroups.has(rate)) {
+            tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+          }
+          const group = tvaGroups.get(rate);
+          group.baseAmount += ligne.baseTVA || (ligne.montantHT + (ligne.montantFodec || 0));
+          group.taxAmount += ligne.montantTVA;
+        }
+      });
+      
+      tvaGroups.forEach((group, rate) => {
+        taxSummary.push({
+          type: 'TVA',
+          rate,
+          baseAmount: group.baseAmount,
+          taxAmount: group.taxAmount
+        });
+      });
+    }
+    
+    return { 
+      totalHT, 
+      totalFodec,
+      totalTVA,
+      totalTaxes: totalFodec + totalTVA, 
+      taxSummary, 
+      totalTTC 
+    };
   };
 
   const handleSave = async () => {
