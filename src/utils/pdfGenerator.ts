@@ -250,8 +250,8 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   const pageWidth = doc.internal.pageSize.getWidth();
   const availableWidth = pageWidth - settings.margins.left - settings.margins.right;
   
-  // Enhanced table format with FODEC support
-  const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'FODEC', 'TVA', 'Total TTC'];
+  // Table format without FODEC column (FODEC is included in calculations but not displayed)
+  const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'TVA', 'Total TTC'];
   
   // Ensure lignes is an array and has items
   const validLines = Array.isArray(documentData.lignes) ? documentData.lignes.filter((ligne: any) => 
@@ -271,12 +271,11 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       formatCurrency(ligne.produit.prixUnitaire),
       '0%',
       formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
-      ligne.produit.fodecApplicable ? formatCurrency((ligne.produit.prixUnitaire * ligne.quantite) * (ligne.produit.tauxFodec / 100)) : '-',
       `${ligne.produit.tva}%`,
       formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
     ]);
   } else {
-    // For other document types with full FODEC support
+    // For other document types without FODEC column
     tableData = validLines.map((ligne: any) => [
       ligne.produit.ref || '-',
       ligne.produit.nom,
@@ -284,28 +283,26 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       formatCurrency(ligne.prixUnitaire),
       `${ligne.remise || 0}%`,
       formatCurrency(ligne.montantHT),
-      ligne.montantFodec ? formatCurrency(ligne.montantFodec) : '-',
       `${ligne.produit.tva}%`,
       formatCurrency(ligne.montantTTC)
     ]);
   }
   
-  // Optimized column widths for enhanced table (9 columns) - using percentage of available width
+  // Optimized column widths for table (8 columns) - using percentage of available width
   const columnStyles = {
-    0: { cellWidth: availableWidth * 0.08, halign: 'left' },    // Réf: 8%
-    1: { cellWidth: availableWidth * 0.25, halign: 'left' },    // Désignation: 25%
-    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
-    3: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Prix U.: 12%
-    4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
-    5: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Total HT: 12%
-    6: { cellWidth: availableWidth * 0.09, halign: 'right' },   // FODEC: 9%
-    7: { cellWidth: availableWidth * 0.06, halign: 'center' },  // TVA: 6%
-    8: { cellWidth: availableWidth * 0.12, halign: 'right' }    // Total TTC: 12%
+    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
+    1: { cellWidth: availableWidth * 0.30, halign: 'left' },    // Désignation: 30%
+    2: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Qté: 10%
+    3: { cellWidth: availableWidth * 0.15, halign: 'right' },   // Prix U.: 15%
+    4: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Remise: 10%
+    5: { cellWidth: availableWidth * 0.15, halign: 'right' },   // Total HT: 15%
+    6: { cellWidth: availableWidth * 0.10, halign: 'center' },  // TVA: 10%
+    7: { cellWidth: availableWidth * 0.15, halign: 'right' }    // Total TTC: 15%
   };
   
   // Add a default empty row if no data
   if (!tableData || tableData.length === 0) {
-    tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '-', '0%', '0.000 TND']];
+    tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0%', '0.000 TND']];
   }
   
   // Table theme based on settings
@@ -415,10 +412,11 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
     currentY += splitAmount.length * (settings.amountInWords.fontSize * 0.35) + settings.spacing.element;
   }
   
-  // CRITICAL FIX: Calculate taxes correctly from lignes, not from old taxes array
+  // Calculate taxes correctly from lignes AND include settings taxes
   const calculatedTaxes = [];
+  const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
   
-  // Group taxes by type and rate from product lines
+  // 1. Group taxes by type and rate from product lines (FODEC and TVA)
   const taxGroups = new Map();
   
   if (documentData.lignes && Array.isArray(documentData.lignes)) {
@@ -441,7 +439,7 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
         fodecGroup.taxAmount += ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100);
       }
       
-      // TVA calculation
+      // TVA calculation - SEPARATE BY RATE
       if (ligne.produit.tva > 0) {
         const tvaKey = `TVA_${ligne.produit.tva}`;
         if (!taxGroups.has(tvaKey)) {
@@ -453,21 +451,86 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
           });
         }
         const tvaGroup = taxGroups.get(tvaKey);
-        const baseTVA = ligne.montantHT + (ligne.montantFodec || 0);
-        tvaGroup.baseAmount += baseTVA;
-        tvaGroup.taxAmount += ligne.montantTVA || (baseTVA * ligne.produit.tva / 100);
+        // Calculate base TVA for this specific line
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
+        const lineBaseTVA = ligne.montantHT + lineFodec;
+        const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
+        
+        tvaGroup.baseAmount += lineBaseTVA;
+        tvaGroup.taxAmount += lineTVA;
       }
     });
   }
   
-  // Convert tax groups to array
+  // 2. Add taxes from settings (like Timbre fiscal)
+  try {
+    if (isElectron && window.electronAPI) {
+      const query = window.electronAPI.dbQuery;
+      const settingsTaxes = await query(`
+        SELECT * FROM taxes 
+        WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%${documentData.type === 'facture' ? 'factures' : documentData.type === 'devis' ? 'devis' : documentData.type === 'bonLivraison' ? 'bonsLivraison' : 'commandesFournisseur'}%'
+        ORDER BY ordre ASC
+      `);
+      
+      // Add settings taxes (like Timbre fiscal)
+      if (settingsTaxes && settingsTaxes.length > 0) {
+        for (const tax of settingsTaxes) {
+          // Skip if it's a TVA tax (already calculated from products)
+          if (tax.nom.toLowerCase().includes('tva')) continue;
+          
+          const taxKey = `SETTINGS_${tax.nom}`;
+          if (!taxGroups.has(taxKey)) {
+            let baseAmount = 0;
+            let taxAmount = 0;
+            
+            if (tax.type === 'fixed') {
+              baseAmount = 0;
+              taxAmount = tax.valeur;
+            } else {
+              // Percentage tax
+              if (tax.calculationBase === 'totalHT') {
+                baseAmount = documentData.totalHT;
+              } else {
+                // Calculate on HT + previous taxes
+                const previousTaxes = Array.from(taxGroups.values()).reduce((sum, group) => sum + group.taxAmount, 0);
+                baseAmount = documentData.totalHT + previousTaxes;
+              }
+              taxAmount = (baseAmount * tax.valeur) / 100;
+            }
+            
+            taxGroups.set(taxKey, {
+              type: tax.nom,
+              rate: tax.type === 'fixed' ? 0 : tax.valeur,
+              baseAmount,
+              taxAmount,
+              isFixed: tax.type === 'fixed'
+            });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error loading settings taxes:', error);
+  }
+  
+  // 3. Convert tax groups to array and sort by type
   taxGroups.forEach((group) => {
     calculatedTaxes.push({
-      nom: `${group.type} ${group.rate}%`,
-      base: group.baseAmount,
+      nom: group.isFixed ? group.type : `${group.type} ${group.rate}%`,
+      base: group.isFixed ? 0 : group.baseAmount,
       taux: group.rate,
-      montant: group.taxAmount
+      montant: group.taxAmount,
+      isFixed: group.isFixed || false
     });
+  });
+  
+  // Sort taxes: FODEC first, then TVA by rate, then other taxes
+  calculatedTaxes.sort((a, b) => {
+    if (a.nom.includes('FODEC') && !b.nom.includes('FODEC')) return -1;
+    if (!a.nom.includes('FODEC') && b.nom.includes('FODEC')) return 1;
+    if (a.nom.includes('TVA') && !b.nom.includes('TVA')) return -1;
+    if (!a.nom.includes('TVA') && b.nom.includes('TVA')) return 1;
+    return a.taux - b.taux;
   });
   
   // Tax details table (if calculated taxes exist)
@@ -483,8 +546,8 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
     const taxTableHeaders = ['Type de taxe', 'Base de calcul', 'Taux (%)', 'Montant'];
     const taxTableData = calculatedTaxes.map((tax: any) => [
       tax.nom,
-      formatCurrency(tax.base),
-      `${tax.taux}%`,
+      tax.isFixed ? '-' : formatCurrency(tax.base),
+      tax.isFixed ? 'Fixe' : `${tax.taux}%`,
       formatCurrency(tax.montant)
     ]);
     
@@ -535,30 +598,8 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
-  // Total FODEC (if applicable)
-  const calculatedTotalFodec = calculatedTaxes
-    .filter(tax => tax.nom.includes('FODEC'))
-    .reduce((sum, tax) => sum + tax.montant, 0);
-    
-  if (calculatedTotalFodec > 0) {
-    doc.text(`Total FODEC:`, rightX - 50, currentY);
-    doc.text(formatCurrency(calculatedTotalFodec), rightX, currentY, { align: 'right' });
-    currentY += settings.spacing.line;
-  }
-  
-  // Total TVA (if applicable)
-  const calculatedTotalTVA = calculatedTaxes
-    .filter(tax => tax.nom.includes('TVA'))
-    .reduce((sum, tax) => sum + tax.montant, 0);
-    
-  if (calculatedTotalTVA > 0) {
-    doc.text(`Total TVA:`, rightX - 50, currentY);
-    doc.text(formatCurrency(calculatedTotalTVA), rightX, currentY, { align: 'right' });
-    currentY += settings.spacing.line;
-  }
-  
-  // Total des taxes (if there are any calculated taxes)
-  const totalCalculatedTaxes = calculatedTotalFodec + calculatedTotalTVA;
+  // Total des taxes (sum of all calculated taxes including settings taxes)
+  const totalCalculatedTaxes = calculatedTaxes.reduce((sum, tax) => sum + tax.montant, 0);
   if (totalCalculatedTaxes > 0) {
     doc.setFont('helvetica', 'bold');
     doc.text(`Total des taxes:`, rightX - 50, currentY);
@@ -572,8 +613,11 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   doc.setFontSize(settings.fonts.heading.size);
   doc.setTextColor(...hexToRgb(settings.colors.primary));
   
+  // Calculate correct TTC including all taxes
+  const correctTotalTTC = documentData.totalHT + totalCalculatedTaxes;
+  
   doc.text(`Total TTC:`, rightX - 50, currentY);
-  doc.text(formatCurrency(documentData.totalTTC), rightX, currentY, { align: 'right' });
+  doc.text(formatCurrency(correctTotalTTC), rightX, currentY, { align: 'right' });
   
   return currentY + settings.spacing.section;
 };
