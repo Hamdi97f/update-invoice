@@ -575,11 +575,18 @@ function initializeDefaultSettings() {
         useEcheanceDate: true
       };
 
+      const defaultCurrencySettings = {
+        symbol: '',
+        decimals: 3,
+        position: 'after'
+      };
+
       const insertSetting = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
       insertSetting.run('numbering', JSON.stringify(defaultNumberingSettings));
       insertSetting.run('company', JSON.stringify(defaultCompanyInfo));
       insertSetting.run('stockSettings', JSON.stringify(defaultStockSettings));
       insertSetting.run('invoiceSettings', JSON.stringify(defaultInvoiceSettings));
+      insertSetting.run('currencySettings', JSON.stringify(defaultCurrencySettings));
       
       log.info('Default settings initialized');
     }

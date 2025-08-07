@@ -35,7 +35,10 @@ const Settings: React.FC = () => {
   const [generalSettings, setGeneralSettings] = useState({
     autoEnableFodec: false,
     useEcheanceDate: true,
-    allowNegativeStock: true
+    allowNegativeStock: true,
+    currencySymbol: '',
+    currencyDecimals: 3,
+    currencyPosition: 'after' as 'before' | 'after'
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -102,6 +105,18 @@ const Settings: React.FC = () => {
       if (stockResult.length > 0) {
         const stockSettings = JSON.parse(stockResult[0].value);
         setGeneralSettings(prev => ({ ...prev, allowNegativeStock: stockSettings.allowNegativeStock }));
+      }
+
+      // Load currency settings
+      const currencyResult = await query('SELECT value FROM settings WHERE key = ?', ['currencySettings']);
+      if (currencyResult.length > 0) {
+        const currencySettings = JSON.parse(currencyResult[0].value);
+        setGeneralSettings(prev => ({ 
+          ...prev, 
+          currencySymbol: currencySettings.symbol || '',
+          currencyDecimals: currencySettings.decimals || 3,
+          currencyPosition: currencySettings.position || 'after'
+        }));
       }
 
     } catch (error) {
@@ -211,6 +226,16 @@ const Settings: React.FC = () => {
       await query(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
         ['stockSettings', JSON.stringify({ allowNegativeStock: generalSettings.allowNegativeStock })]
+      );
+
+      // Save currency settings
+      await query(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['currencySettings', JSON.stringify({ 
+          symbol: generalSettings.currencySymbol,
+          decimals: generalSettings.currencyDecimals,
+          position: generalSettings.currencyPosition
+        })]
       );
 
       alert('Paramètres généraux sauvegardés avec succès');
@@ -686,6 +711,89 @@ const Settings: React.FC = () => {
                       }`}
                     ></span>
                   </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Currency Settings */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-4">Paramètres de devise</h4>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Symbole de devise
+                  </label>
+                  <input
+                    type="text"
+                    value={generalSettings.currencySymbol}
+                    onChange={(e) => setGeneralSettings(prev => ({ ...prev, currencySymbol: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: TND, EUR, USD (laissez vide pour aucun symbole)"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Laissez vide pour afficher les montants sans symbole de devise
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Nombre de décimales
+                    </label>
+                    <select
+                      value={generalSettings.currencyDecimals}
+                      onChange={(e) => setGeneralSettings(prev => ({ ...prev, currencyDecimals: parseInt(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value={0}>0 décimale (100)</option>
+                      <option value={1}>1 décimale (100.0)</option>
+                      <option value={2}>2 décimales (100.00)</option>
+                      <option value={3}>3 décimales (100.000)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Position du symbole
+                    </label>
+                    <select
+                      value={generalSettings.currencyPosition}
+                      onChange={(e) => setGeneralSettings(prev => ({ ...prev, currencyPosition: e.target.value as 'before' | 'after' }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!generalSettings.currencySymbol}
+                    >
+                      <option value="after">Après le montant (100.000 TND)</option>
+                      <option value="before">Avant le montant (TND 100.000)</option>
+                    </select>
+                    {!generalSettings.currencySymbol && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Ajoutez un symbole pour activer cette option
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="text-sm font-medium text-blue-800">Aperçu</h4>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Exemple d'affichage: {
+                          generalSettings.currencySymbol 
+                            ? (generalSettings.currencyPosition === 'before' 
+                                ? `${generalSettings.currencySymbol} ${(1234.567).toFixed(generalSettings.currencyDecimals)}`
+                                : `${(1234.567).toFixed(generalSettings.currencyDecimals)} ${generalSettings.currencySymbol}`)
+                            : (1234.567).toFixed(generalSettings.currencyDecimals)
+                        }
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

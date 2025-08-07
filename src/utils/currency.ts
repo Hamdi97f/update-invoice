@@ -7,7 +7,7 @@ interface CurrencySettings {
 
 // Default currency settings
 const defaultCurrencySettings: CurrencySettings = {
-  symbol: 'TND',
+  symbol: '',
   decimals: 3,
   position: 'after'
 };
@@ -30,6 +30,11 @@ const getCurrencySettings = (): CurrencySettings => {
 export const formatCurrency = (amount: number): string => {
   const settings = getCurrencySettings();
   const formattedAmount = amount.toFixed(settings.decimals);
+  
+  // If no symbol is set, return just the formatted amount
+  if (!settings.symbol || settings.symbol.trim() === '') {
+    return formattedAmount;
+  }
   
   if (settings.position === 'before') {
     return `${settings.symbol} ${formattedAmount}`;
