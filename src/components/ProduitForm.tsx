@@ -47,6 +47,8 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
       } else {
         // Generate product ref automatically for new products (optional)
         generateProductRef(defaultType);
+        // Load FODEC auto-enable setting
+        loadFodecAutoSetting(defaultType);
         setFormData({
           ref: '',
           nom: '',
@@ -62,6 +64,21 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
     }
   }, [produit, isOpen, defaultType, isReady]);
 
+  const loadFodecAutoSetting = async (type: 'vente' | 'achat') => {
+    if (!isReady) return;
+    
+    try {
+      const result = await query('SELECT value FROM settings WHERE key = ?', ['generalSettings']);
+      if (result.length > 0) {
+        const generalSettings = JSON.parse(result[0].value);
+        if (generalSettings.autoEnableFodec) {
+          setFormData(prev => ({ ...prev, fodecApplicable: true }));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading FODEC auto setting:', error);
+    }
+  };
   const generateProductRef = async (type: 'vente' | 'achat') => {
     if (!isReady) return;
     
