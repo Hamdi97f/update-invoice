@@ -255,8 +255,8 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   const pageWidth = doc.internal.pageSize.getWidth();
   const availableWidth = pageWidth - settings.margins.left - settings.margins.right;
   
-  // Table format with FODEC column for all document types
-  const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'FODEC', 'TVA', 'Total TTC'];
+  // Table format WITHOUT FODEC column - FODEC goes in tax details section
+  const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'TVA', 'Total TTC'];
   
   // Ensure lignes is an array and has items
   const validLines = Array.isArray(documentData.lignes) ? documentData.lignes.filter((ligne: any) => 
@@ -267,50 +267,48 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   let tableData;
   
+  // Standard table format for all document types - NO FODEC column
   if (documentData.type === 'bonLivraison') {
-    // For bon de livraison, show all columns including FODEC with calculated values
+    // For bon de livraison, use product prices for display
     tableData = validLines.map((ligne: any) => [
       ligne.produit.ref || '-',
       ligne.produit.nom,
       ligne.quantite.toString(),
-      formatCurrency(ligne.produit.prixUnitaire),
+      formatCurrencyForPDF(ligne.produit.prixUnitaire),
       '0%',
-      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
-      ligne.produit.fodecApplicable ? formatCurrencyForPDF((ligne.produit.prixUnitaire * ligne.quantite) * (ligne.produit.tauxFodec / 100)) : '-',
+      formatCurrencyForPDF(ligne.produit.prixUnitaire * ligne.quantite),
       `${ligne.produit.tva}%`,
       formatCurrencyForPDF(ligne.produit.prixUnitaire * ligne.quantite * (1 + (ligne.produit.fodecApplicable ? ligne.produit.tauxFodec / 100 : 0) + ligne.produit.tva / 100))
     ]);
   } else {
-    // For other document types with FODEC column
+    // For other document types (factures, devis, commandes)
     tableData = validLines.map((ligne: any) => [
       ligne.produit.ref || '-',
       ligne.produit.nom,
       ligne.quantite.toString(),
-      formatCurrency(ligne.prixUnitaire),
+      formatCurrencyForPDF(ligne.prixUnitaire),
       `${ligne.remise || 0}%`,
-      formatCurrency(ligne.montantHT),
-      ligne.produit.fodecApplicable ? formatCurrencyForPDF((ligne.prixUnitaire * ligne.quantite) * (ligne.produit.tauxFodec / 100)) : '-',
+      formatCurrencyForPDF(ligne.montantHT),
       `${ligne.produit.tva}%`,
-      formatCurrency(ligne.montantTTC)
+      formatCurrencyForPDF(ligne.montantTTC)
     ]);
   }
   
-  // Optimized column widths for table (9 columns) - using percentage of available width
+  // Optimized column widths for table (8 columns) - using percentage of available width
   const columnStyles = {
-    0: { cellWidth: availableWidth * 0.08, halign: 'left' },    // Réf: 8%
-    1: { cellWidth: availableWidth * 0.30, halign: 'left' },    // Désignation: 30%
-    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
-    3: { cellWidth: availableWidth * 0.11, halign: 'right' },   // Prix U.: 11%
-    4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
-    5: { cellWidth: availableWidth * 0.11, halign: 'right' },   // Total HT: 11%
-    6: { cellWidth: availableWidth * 0.08, halign: 'right' },   // FODEC: 8%
-    7: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
-    8: { cellWidth: availableWidth * 0.09, halign: 'right' }    // Total TTC: 9%
+    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
+    1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
+    2: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Qté: 10%
+    3: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Prix U.: 13%
+    4: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Remise: 10%
+    5: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Total HT: 13%
+    6: { cellWidth: availableWidth * 0.09, halign: 'center' },  // TVA: 9%
+    7: { cellWidth: availableWidth * 0.13, halign: 'right' }    // Total TTC: 13%
   };
   
   // Add a default empty row if no data
   if (!tableData || tableData.length === 0) {
-    tableData = [['-', 'Aucun produit', '0', formatCurrencyForPDF(0), '0%', formatCurrencyForPDF(0), '-', '0%', formatCurrencyForPDF(0)]];
+    tableData = [['-', 'Aucun produit', '0', formatCurrencyForPDF(0), '0%', formatCurrencyForPDF(0), '0%', formatCurrencyForPDF(0)]];
   }
   
   // Table theme based on settings

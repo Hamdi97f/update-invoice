@@ -793,9 +793,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                           Total HT
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          FODEC
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           TVA
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -853,13 +850,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm">
-                            {ligne.produit.fodecApplicable ? 
-                              formatCurrency(ligne.montantHT * (ligne.produit.tauxFodec / 100)) : 
-                              '-'
-                            }
-                          </td>
-                          <td className="px-4 py-3 text-sm font-medium">
-                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
+                            {ligne.produit.tva}%
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-green-600">
                             {formatCurrency(ligne.montantTTC)}
