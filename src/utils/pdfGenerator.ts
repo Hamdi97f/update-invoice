@@ -11,6 +11,11 @@ import { calculateTaxesByGroup, loadTaxGroups } from './productTaxCalculator';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
 
+// Helper function for currency formatting in PDF
+const formatCurrencyForPDF = (amount: number) => {
+  return formatCurrency(amount);
+};
+
 // Load template settings with enhanced configuration
 const getTemplateSettings = async (isElectron: boolean, query?: any) => {
   const defaultSettings = {
