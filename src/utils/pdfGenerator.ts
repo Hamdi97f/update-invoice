@@ -415,8 +415,63 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
     currentY += splitAmount.length * (settings.amountInWords.fontSize * 0.35) + settings.spacing.element;
   }
   
-  // Tax details table (if taxes exist)
-  if (documentData.taxes && documentData.taxes.length > 0) {
+  // CRITICAL FIX: Calculate taxes correctly from lignes, not from old taxes array
+  const calculatedTaxes = [];
+  
+  // Group taxes by type and rate from product lines
+  const taxGroups = new Map();
+  
+  if (documentData.lignes && Array.isArray(documentData.lignes)) {
+    documentData.lignes.forEach((ligne: any) => {
+      if (!ligne.produit) return;
+      
+      // FODEC calculation
+      if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
+        const fodecKey = `FODEC_${ligne.produit.tauxFodec}`;
+        if (!taxGroups.has(fodecKey)) {
+          taxGroups.set(fodecKey, {
+            type: 'FODEC',
+            rate: ligne.produit.tauxFodec,
+            baseAmount: 0,
+            taxAmount: 0
+          });
+        }
+        const fodecGroup = taxGroups.get(fodecKey);
+        fodecGroup.baseAmount += ligne.montantHT;
+        fodecGroup.taxAmount += ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100);
+      }
+      
+      // TVA calculation
+      if (ligne.produit.tva > 0) {
+        const tvaKey = `TVA_${ligne.produit.tva}`;
+        if (!taxGroups.has(tvaKey)) {
+          taxGroups.set(tvaKey, {
+            type: 'TVA',
+            rate: ligne.produit.tva,
+            baseAmount: 0,
+            taxAmount: 0
+          });
+        }
+        const tvaGroup = taxGroups.get(tvaKey);
+        const baseTVA = ligne.montantHT + (ligne.montantFodec || 0);
+        tvaGroup.baseAmount += baseTVA;
+        tvaGroup.taxAmount += ligne.montantTVA || (baseTVA * ligne.produit.tva / 100);
+      }
+    });
+  }
+  
+  // Convert tax groups to array
+  taxGroups.forEach((group) => {
+    calculatedTaxes.push({
+      nom: `${group.type} ${group.rate}%`,
+      base: group.baseAmount,
+      taux: group.rate,
+      montant: group.taxAmount
+    });
+  });
+  
+  // Tax details table (if calculated taxes exist)
+  if (calculatedTaxes.length > 0) {
     // Tax details table header
     doc.setFontSize(settings.fonts.heading.size);
     doc.setTextColor(...hexToRgb(settings.colors.primary));
@@ -426,11 +481,11 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
     
     // Prepare tax table data
     const taxTableHeaders = ['Type de taxe', 'Base de calcul', 'Taux (%)', 'Montant'];
-    const taxTableData = documentData.taxes.map((tax: any) => [
-      tax.nom || 'Taxe',
-      formatCurrency(tax.base || 0),
-      tax.taux ? `${tax.taux}%` : '-',
-      formatCurrency(tax.montant || 0)
+    const taxTableData = calculatedTaxes.map((tax: any) => [
+      tax.nom,
+      formatCurrency(tax.base),
+      `${tax.taux}%`,
+      formatCurrency(tax.montant)
     ]);
     
     // Render tax table
@@ -481,29 +536,35 @@ const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: an
   currentY += settings.spacing.line;
   
   // Total FODEC (if applicable)
-  if (documentData.totalFodec && documentData.totalFodec > 0) {
+  const calculatedTotalFodec = calculatedTaxes
+    .filter(tax => tax.nom.includes('FODEC'))
+    .reduce((sum, tax) => sum + tax.montant, 0);
+    
+  if (calculatedTotalFodec > 0) {
     doc.text(`Total FODEC:`, rightX - 50, currentY);
-    doc.text(formatCurrency(documentData.totalFodec), rightX, currentY, { align: 'right' });
+    doc.text(formatCurrency(calculatedTotalFodec), rightX, currentY, { align: 'right' });
     currentY += settings.spacing.line;
   }
   
   // Total TVA (if applicable)
-  if (documentData.totalTVA && documentData.totalTVA > 0) {
+  const calculatedTotalTVA = calculatedTaxes
+    .filter(tax => tax.nom.includes('TVA'))
+    .reduce((sum, tax) => sum + tax.montant, 0);
+    
+  if (calculatedTotalTVA > 0) {
     doc.text(`Total TVA:`, rightX - 50, currentY);
-    doc.text(formatCurrency(documentData.totalTVA), rightX, currentY, { align: 'right' });
+    doc.text(formatCurrency(calculatedTotalTVA), rightX, currentY, { align: 'right' });
     currentY += settings.spacing.line;
   }
   
-  // Total des taxes (if there are any taxes)
-  if (documentData.taxes && documentData.taxes.length > 0) {
-    const totalTaxes = documentData.taxes.reduce((sum: number, tax: any) => sum + (tax.montant || 0), 0);
-    if (totalTaxes > 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Total des taxes:`, rightX - 50, currentY);
-      doc.text(formatCurrency(totalTaxes), rightX, currentY, { align: 'right' });
-      doc.setFont('helvetica', 'normal');
-      currentY += settings.spacing.line;
-    }
+  // Total des taxes (if there are any calculated taxes)
+  const totalCalculatedTaxes = calculatedTotalFodec + calculatedTotalTVA;
+  if (totalCalculatedTaxes > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total des taxes:`, rightX - 50, currentY);
+    doc.text(formatCurrency(totalCalculatedTaxes), rightX, currentY, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    currentY += settings.spacing.line;
   }
     
   // Total TTC - emphasized
@@ -732,47 +793,10 @@ export const generateFacturePDF = async (facture: Facture) => {
       facture.lignes = [];
     }
     
-    // Prepare taxes array for PDF display
-    const taxes = [];
-    
-    // Add FODEC tax if applicable
-    if (facture.totalFodec && facture.totalFodec > 0) {
-      taxes.push({
-        nom: 'FODEC',
-        base: facture.totalHT,
-        taux: 1, // Default FODEC rate
-        montant: facture.totalFodec
-      });
-    }
-    
-    // Add TVA tax if applicable
-    if (facture.totalTVA && facture.totalTVA > 0) {
-      const baseTVA = facture.totalHT + (facture.totalFodec || 0);
-      const avgTVARate = baseTVA > 0 ? Math.round((facture.totalTVA / baseTVA) * 100) : 0;
-      taxes.push({
-        nom: 'TVA',
-        base: baseTVA,
-        taux: avgTVARate,
-        montant: facture.totalTVA
-      });
-    }
-    
-    // Add any additional taxes from the taxes array
-    if (facture.taxes && Array.isArray(facture.taxes)) {
-      facture.taxes.forEach(tax => {
-        taxes.push({
-          nom: tax.nom || 'Taxe',
-          base: tax.base || 0,
-          taux: tax.taux || 0,
-          montant: tax.montant || 0
-        });
-      });
-    }
-    
+    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
     const documentData = {
       ...facture,
-      type: 'facture',
-      taxes: taxes
+      type: 'facture'
     };
     
     return await generateEnhancedDocument(documentData, 'FACTURE');
@@ -790,35 +814,10 @@ export const generateDevisPDF = async (devis: Devis) => {
       devis.lignes = [];
     }
     
-    // Prepare taxes array for PDF display
-    const taxes = [];
-    
-    // Add FODEC tax if applicable
-    if (devis.totalFodec && devis.totalFodec > 0) {
-      taxes.push({
-        nom: 'FODEC',
-        base: devis.totalHT,
-        taux: 1, // Default FODEC rate
-        montant: devis.totalFodec
-      });
-    }
-    
-    // Add TVA tax if applicable
-    if (devis.totalTVA && devis.totalTVA > 0) {
-      const baseTVA = devis.totalHT + (devis.totalFodec || 0);
-      const avgTVARate = baseTVA > 0 ? Math.round((devis.totalTVA / baseTVA) * 100) : 0;
-      taxes.push({
-        nom: 'TVA',
-        base: baseTVA,
-        taux: avgTVARate,
-        montant: devis.totalTVA
-      });
-    }
-    
+    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
     const documentData = {
       ...devis,
-      type: 'devis',
-      taxes: taxes
+      type: 'devis'
     };
     
     return await generateEnhancedDocument(documentData, 'DEVIS');
@@ -836,35 +835,10 @@ export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
       bonLivraison.lignes = [];
     }
     
-    // Prepare taxes array for PDF display
-    const taxes = [];
-    
-    // Add FODEC tax if applicable
-    if (bonLivraison.totalFodec && bonLivraison.totalFodec > 0) {
-      taxes.push({
-        nom: 'FODEC',
-        base: bonLivraison.totalHT || 0,
-        taux: 1, // Default FODEC rate
-        montant: bonLivraison.totalFodec
-      });
-    }
-    
-    // Add TVA tax if applicable
-    if (bonLivraison.totalTVA && bonLivraison.totalTVA > 0) {
-      const baseTVA = (bonLivraison.totalHT || 0) + (bonLivraison.totalFodec || 0);
-      const avgTVARate = baseTVA > 0 ? Math.round((bonLivraison.totalTVA / baseTVA) * 100) : 0;
-      taxes.push({
-        nom: 'TVA',
-        base: baseTVA,
-        taux: avgTVARate,
-        montant: bonLivraison.totalTVA
-      });
-    }
-    
+    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
     const documentData = {
       ...bonLivraison,
-      type: 'bonLivraison',
-      taxes: taxes
+      type: 'bonLivraison'
     };
     
     return await generateEnhancedDocument(documentData, 'BON DE LIVRAISON');
@@ -882,35 +856,10 @@ export const generateCommandeFournisseurPDF = async (commande: CommandeFournisse
       commande.lignes = [];
     }
     
-    // Prepare taxes array for PDF display
-    const taxes = [];
-    
-    // Add FODEC tax if applicable
-    if (commande.totalFodec && commande.totalFodec > 0) {
-      taxes.push({
-        nom: 'FODEC',
-        base: commande.totalHT || 0,
-        taux: 1, // Default FODEC rate
-        montant: commande.totalFodec
-      });
-    }
-    
-    // Add TVA tax if applicable
-    if (commande.totalTVA && commande.totalTVA > 0) {
-      const baseTVA = (commande.totalHT || 0) + (commande.totalFodec || 0);
-      const avgTVARate = baseTVA > 0 ? Math.round((commande.totalTVA / baseTVA) * 100) : 0;
-      taxes.push({
-        nom: 'TVA',
-        base: baseTVA,
-        taux: avgTVARate,
-        montant: commande.totalTVA
-      });
-    }
-    
+    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
     const documentData = {
       ...commande,
-      type: 'commande',
-      taxes: taxes
+      type: 'commande'
     };
     
     return await generateEnhancedDocument(documentData, 'COMMANDE FOURNISSEUR');
