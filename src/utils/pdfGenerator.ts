@@ -284,7 +284,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       formatCurrency(ligne.prixUnitaire),
       `${ligne.remise || 0}%`,
       formatCurrency(ligne.montantHT),
-      ligne.montantFodec ? formatCurrencyForPDF(ligne.montantFodec) : '-',
+      ligne.produit.fodecApplicable ? formatCurrencyForPDF((ligne.prixUnitaire * ligne.quantite) * (ligne.produit.tauxFodec / 100)) : '-',
       `${ligne.produit.tva}%`,
       formatCurrency(ligne.montantTTC)
     ]);

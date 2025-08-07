@@ -747,6 +747,9 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                           FODEC
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          FODEC
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           TVA
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -790,10 +793,19 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                             {formatCurrency(ligne.produit.prixUnitaire * ligne.quantite)}
                           </td>
                           <td className="px-4 py-3 text-sm">
+                            {ligne.produit.fodecApplicable ? 
+                              formatCurrency((ligne.produit.prixUnitaire * ligne.quantite) * (ligne.produit.tauxFodec / 100)) : 
+                              '-'
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-sm">
                             {ligne.produit.tva}%
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-orange-600">
-                            {formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))}
+                            {formatCurrency(
+                              ligne.produit.prixUnitaire * ligne.quantite * 
+                              (1 + (ligne.produit.fodecApplicable ? ligne.produit.tauxFodec / 100 : 0) + ligne.produit.tva / 100)
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <button
