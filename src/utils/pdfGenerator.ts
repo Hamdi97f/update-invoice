@@ -613,6 +613,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   doc.setTextColor(...hexToRgb(settings.colors.primary));
   
   // Calculate correct TTC including all taxes
+  const totalCalculatedTaxes = calculatedTaxes.reduce((sum, tax) => sum + tax.montant, 0);
   const correctTotalTTC = documentData.totalHT + totalCalculatedTaxes;
   
   doc.text(`Total TTC:`, rightX - 50, currentY);
