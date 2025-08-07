@@ -874,13 +874,138 @@ const Settings: React.FC = () => {
 
           <div className="mt-6">
             <button
-              onClick={saveSecuritySettings}
+              onClick={saveGeneralSettings}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isSubmitting}
             >
               <Save className="w-4 h-4 mr-2" />
-              {isSubmitting ? 'Sauvegarde...' : 'Sauvegarder les paramètres de sécurité'}
+              {isSubmitting ? 'Sauvegarde...' : 'Sauvegarder les paramètres généraux'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Security Settings Tab */}
+      {activeTab === 'security' && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Paramètres de sécurité</h3>
+          
+          <div className="space-y-6">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-4">Protection par mot de passe</h4>
+              
+              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg mb-4">
+                <div>
+                  <label className="font-medium text-gray-900">Activer la protection par mot de passe</label>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Demander un mot de passe au démarrage de l'application
+                  </p>
+                </div>
+                <div className="relative inline-block w-12 mr-2 align-middle select-none">
+                  <input
+                    type="checkbox"
+                    id="toggle-password-security"
+                    checked={securitySettings.passwordEnabled}
+                    onChange={(e) => setSecuritySettings(prev => ({ 
+                      ...prev, 
+                      passwordEnabled: e.target.checked,
+                      password: '',
+                      confirmPassword: ''
+                    }))}
+                    className="sr-only"
+                  />
+                  <label
+                    htmlFor="toggle-password-security"
+                    className={`block overflow-hidden h-6 rounded-full cursor-pointer ${
+                      securitySettings.passwordEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform ${
+                        securitySettings.passwordEnabled ? 'translate-x-6' : 'translate-x-0'
+                      }`}
+                    ></span>
+                  </label>
+                </div>
+              </div>
+
+              {securitySettings.passwordEnabled && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Nouveau mot de passe
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={securitySettings.password}
+                        onChange={(e) => {
+                          setSecuritySettings(prev => ({ ...prev, password: e.target.value }));
+                          setPasswordError('');
+                        }}
+                        className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10 ${
+                          passwordError ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                        placeholder="Entrez votre mot de passe"
+                        disabled={isSubmitting}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        disabled={isSubmitting}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Confirmer le mot de passe
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={securitySettings.confirmPassword}
+                        onChange={(e) => {
+                          setSecuritySettings(prev => ({ ...prev, confirmPassword: e.target.value }));
+                          setPasswordError('');
+                        }}
+                        className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10 ${
+                          passwordError ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                        placeholder="Confirmez votre mot de passe"
+                        disabled={isSubmitting}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        disabled={isSubmitting}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {passwordError && (
+                    <div className="text-red-600 text-sm">{passwordError}</div>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-4">
+                <button
+                  onClick={saveSecuritySettings}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmitting}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSubmitting ? 'Sauvegarde...' : 'Sauvegarder la sécurité'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
