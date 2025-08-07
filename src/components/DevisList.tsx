@@ -387,8 +387,8 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       // Save bon de livraison
       await query(
         `INSERT INTO bons_livraison 
-         (id, numero, date, clientId, statut, totalHT, totalFodec, totalTVA, totalTTC, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, clientId, statut, totalHT, totalTVA, totalTTC, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bonLivraison.id,
           bonLivraison.numero,
@@ -396,7 +396,6 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
           bonLivraison.client.id,
           bonLivraison.statut,
           bonLivraison.totalHT,
-          bonLivraison.totalFodec || 0,
           bonLivraison.totalTVA || 0,
           bonLivraison.totalTTC,
           bonLivraison.notes
@@ -407,20 +406,13 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       for (const ligne of bonLivraison.lignes) {
         await query(
           `INSERT INTO lignes_bon_livraison 
-           (id, bonLivraisonId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, bonLivraisonId, produitId, quantite)
+           VALUES (?, ?, ?, ?)`,
           [
             ligne.id,
             bonLivraison.id,
             ligne.produit.id,
-            ligne.quantite,
-            ligne.prixUnitaire,
-            ligne.remise || 0,
-            ligne.montantHT,
-            ligne.montantFodec || 0,
-            ligne.baseTVA || 0,
-            ligne.montantTVA || 0,
-            ligne.montantTTC
+            ligne.quantite
           ]
         );
       }

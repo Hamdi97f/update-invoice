@@ -430,8 +430,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     // Save the single consolidated facture
     await query(
       `INSERT INTO factures 
-       (id, numero, date, dateEcheance, clientId, totalHT, totalFodec, totalTVA, totalTTC, statut, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         facture.id,
         facture.numero,
@@ -439,7 +439,6 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
         facture.dateEcheance.toISOString(),
         facture.client.id,
         facture.totalHT,
-        facture.totalFodec,
         facture.totalTVA,
         facture.totalTTC,
         facture.statut,
@@ -451,8 +450,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     for (const ligne of facture.lignes) {
       await query(
         `INSERT INTO lignes_facture 
-         (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ligne.id,
           facture.id,
@@ -461,9 +460,6 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
           ligne.prixUnitaire,
           ligne.remise || 0,
           ligne.montantHT,
-          ligne.montantFodec || 0,
-          ligne.baseTVA || 0,
-          ligne.montantTVA || 0,
           ligne.montantTTC
         ]
       );
