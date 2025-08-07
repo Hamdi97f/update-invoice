@@ -386,7 +386,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
 };
 
 // Enhanced totals section
-const renderEnhancedTotalsSection = (doc: jsPDF, settings: any, documentData: any, startY: number) => {
+const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentData: any, startY: number) => {
   const pageWidth = doc.internal.pageSize.getWidth();
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
@@ -727,7 +727,7 @@ const renderInvoiceOnExistingDocument = async (
   currentY = renderEnhancedTitle(doc, settings, documentTitle, documentData, currentY);
   currentY = renderClientSection(doc, settings, documentData, currentY);
   currentY = renderEnhancedTable(doc, settings, documentData, currentY);
-  currentY = renderEnhancedTotalsSection(doc, settings, documentData, currentY);
+  currentY = await renderEnhancedTotalsSection(doc, settings, documentData, currentY);
   renderEnhancedFooter(doc, settings, documentData.notes);
   
   return doc;
@@ -758,7 +758,7 @@ const generateEnhancedDocument = async (documentData: any, documentTitle: string
     currentY = renderEnhancedTitle(doc, settings, documentTitle, documentData, currentY);
     currentY = renderClientSection(doc, settings, documentData, currentY);
     currentY = renderEnhancedTable(doc, settings, documentData, currentY);
-    currentY = renderEnhancedTotalsSection(doc, settings, documentData, currentY);
+    currentY = await renderEnhancedTotalsSection(doc, settings, documentData, currentY);
     renderEnhancedFooter(doc, settings, documentData.notes);
     
     return doc;
