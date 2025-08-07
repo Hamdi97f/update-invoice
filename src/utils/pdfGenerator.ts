@@ -598,16 +598,15 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
-  // Total des taxes (sum of all calculated taxes including settings taxes)
-  const totalCalculatedTaxes = calculatedTaxes.reduce((sum, tax) => sum + tax.montant, 0);
-  if (totalCalculatedTaxes > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total des taxes:`, rightX - 50, currentY);
-    doc.text(formatCurrency(totalCalculatedTaxes), rightX, currentY, { align: 'right' });
+  // Individual tax lines (same as in tax detail table)
+  calculatedTaxes.forEach((tax: any) => {
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...hexToRgb(settings.fonts.body.color));
+    doc.text(`${tax.nom}:`, rightX - 50, currentY);
+    doc.text(formatCurrency(tax.montant), rightX, currentY, { align: 'right' });
     currentY += settings.spacing.line;
-  }
-    
+  });
+  
   // Total TTC - emphasized
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(settings.fonts.heading.size);
