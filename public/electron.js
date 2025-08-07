@@ -405,6 +405,8 @@ function addMissingColumns() {
     // Add missing columns to bons_livraison table
     addColumnIfNotExists('bons_livraison', 'totalHT', 'REAL DEFAULT 0');
     addColumnIfNotExists('bons_livraison', 'totalFodec', 'REAL DEFAULT 0');
+    addColumnIfNotExists('bons_livraison', 'totalTVA', 'REAL DEFAULT 0');
+    addColumnIfNotExists('bons_livraison', 'totalTTC', 'REAL DEFAULT 0');
     
     // Add missing columns to tax_groups table
     addColumnIfNotExists('tax_groups', 'applicableDocuments', 'TEXT DEFAULT "[]"');
