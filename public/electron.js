@@ -155,11 +155,6 @@ function updateDatabaseSchema() {
         prixUnitaire REAL NOT NULL,
         remise REAL DEFAULT 0,
         montantHT REAL NOT NULL,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantTVA REAL DEFAULT 0,
         montantTTC REAL NOT NULL,
         FOREIGN KEY (factureId) REFERENCES factures (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
@@ -189,11 +184,6 @@ function updateDatabaseSchema() {
         prixUnitaire REAL NOT NULL,
         remise REAL DEFAULT 0,
         montantHT REAL NOT NULL,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantTVA REAL DEFAULT 0,
         montantTTC REAL NOT NULL,
         FOREIGN KEY (devisId) REFERENCES devis (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
@@ -207,10 +197,6 @@ function updateDatabaseSchema() {
         statut TEXT DEFAULT 'prepare',
         factureId TEXT,
         notes TEXT DEFAULT '',
-        totalHT REAL DEFAULT 0,
-        totalFodec REAL DEFAULT 0,
-        totalTVA REAL DEFAULT 0,
-        totalTTC REAL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (clientId) REFERENCES clients (id),
         FOREIGN KEY (factureId) REFERENCES factures (id)
@@ -221,13 +207,6 @@ function updateDatabaseSchema() {
         bonLivraisonId TEXT NOT NULL,
         produitId TEXT NOT NULL,
         quantite INTEGER NOT NULL,
-        prixUnitaire REAL DEFAULT 0,
-        remise REAL DEFAULT 0,
-        montantHT REAL DEFAULT 0,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantTVA REAL DEFAULT 0,
-        montantTTC REAL DEFAULT 0,
         FOREIGN KEY (bonLivraisonId) REFERENCES bons_livraison (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
       );
@@ -256,11 +235,6 @@ function updateDatabaseSchema() {
         prixUnitaire REAL NOT NULL,
         remise REAL DEFAULT 0,
         montantHT REAL NOT NULL,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantFodec REAL DEFAULT 0,
-        baseTVA REAL DEFAULT 0,
-        montantTVA REAL DEFAULT 0,
         montantTTC REAL NOT NULL,
         FOREIGN KEY (commandeId) REFERENCES commandes_fournisseur (id),
         FOREIGN KEY (produitId) REFERENCES produits (id)
@@ -429,10 +403,6 @@ function addMissingColumns() {
     addColumnIfNotExists('lignes_commande_fournisseur', 'montantTVA', 'REAL DEFAULT 0');
     
     // Add missing columns to bons_livraison table
-    addColumnIfNotExists('bons_livraison', 'totalHT', 'REAL DEFAULT 0');
-    addColumnIfNotExists('bons_livraison', 'totalFodec', 'REAL DEFAULT 0');
-    addColumnIfNotExists('bons_livraison', 'totalTVA', 'REAL DEFAULT 0');
-    addColumnIfNotExists('bons_livraison', 'totalTTC', 'REAL DEFAULT 0');
     
     // Add missing columns to tax_groups table
     addColumnIfNotExists('tax_groups', 'applicableDocuments', 'TEXT DEFAULT "[]"');
