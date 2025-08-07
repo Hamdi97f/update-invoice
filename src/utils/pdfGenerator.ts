@@ -290,14 +290,14 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   // Optimized column widths for table (8 columns) - using percentage of available width
   const columnStyles = {
-    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
-    1: { cellWidth: availableWidth * 0.30, halign: 'left' },    // Désignation: 30%
-    2: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Qté: 10%
-    3: { cellWidth: availableWidth * 0.15, halign: 'right' },   // Prix U.: 15%
-    4: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Remise: 10%
-    5: { cellWidth: availableWidth * 0.15, halign: 'right' },   // Total HT: 15%
-    6: { cellWidth: availableWidth * 0.10, halign: 'center' },  // TVA: 10%
-    7: { cellWidth: availableWidth * 0.15, halign: 'right' }    // Total TTC: 15%
+    0: { cellWidth: availableWidth * 0.08, halign: 'left' },    // Réf: 8%
+    1: { cellWidth: availableWidth * 0.32, halign: 'left' },    // Désignation: 32%
+    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
+    3: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Prix U.: 13%
+    4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
+    5: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Total HT: 13%
+    6: { cellWidth: availableWidth * 0.08, halign: 'center' },  // TVA: 8%
+    7: { cellWidth: availableWidth * 0.10, halign: 'right' }    // Total TTC: 10%
   };
   
   // Add a default empty row if no data
@@ -326,7 +326,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       left: settings.margins.left, 
       right: settings.margins.right 
     },
-    tableWidth: 'wrap', // Use available width efficiently
+    tableWidth: availableWidth, // Force table to use exact available width
     
     headStyles: {
       fillColor: settings.table.model === 'simple' ? hexToRgb('#f8fafc') : hexToRgb(settings.colors.primary),
@@ -364,7 +364,8 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       lineWidth: 0.2, // Very thin borders
       cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 }, // Compact padding
       overflow: 'linebreak',
-      cellWidth: 'wrap'
+      cellWidth: 'wrap',
+      fontSize: settings.table.fontSize
     },
     
     showHead: 'everyPage',
@@ -377,6 +378,11 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       // Ensure text wrapping for long content
       if (data.column.index === 1) { // Désignation column
         data.cell.styles.cellWidth = columnStyles[1].cellWidth;
+        data.cell.styles.overflow = 'linebreak';
+      }
+      // Ensure all columns respect their assigned widths
+      if (columnStyles[data.column.index]) {
+        data.cell.styles.cellWidth = columnStyles[data.column.index].cellWidth;
       }
     }
   });
