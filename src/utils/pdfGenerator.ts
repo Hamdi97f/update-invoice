@@ -6,6 +6,7 @@ import { fr } from 'date-fns/locale';
 import { formatCurrency } from './currency';
 import { getCompanyInfo } from './numberGenerator';
 import { numberToWords } from './numberToWords';
+import { getCurrencySymbol, getCurrencyDecimals } from './currency';
 import { calculateTaxesByGroup, loadTaxGroups } from './productTaxCalculator';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
@@ -394,6 +395,8 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
 // Enhanced totals section
 const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentData: any, startY: number) => {
   const pageWidth = doc.internal.pageSize.getWidth();
+  const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
+  const query = isElectron ? window.electronAPI.dbQuery : undefined;
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
   
