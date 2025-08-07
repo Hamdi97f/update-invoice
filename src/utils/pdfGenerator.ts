@@ -404,18 +404,18 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
   
-  // Calculate taxes correctly from lignes AND include settings taxes
+  // CRITICAL FIX: Calculate taxes correctly from lignes for ALL document types
   const calculatedTaxes = [];
   const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
   
-  // 1. Group taxes by type and rate from product lines (FODEC and TVA)
+  // 1. CRITICAL: Group taxes by type and rate from product lines (FODEC and TVA) - FOR ALL DOCUMENT TYPES
   const taxGroups = new Map();
   
   if (documentData.lignes && Array.isArray(documentData.lignes)) {
     documentData.lignes.forEach((ligne: any) => {
       if (!ligne.produit) return;
       
-      // FODEC calculation
+      // CRITICAL: FODEC calculation for ALL document types
       if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
         const fodecKey = `FODEC_${ligne.produit.tauxFodec}`;
         if (!taxGroups.has(fodecKey)) {
@@ -427,14 +427,21 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const fodecGroup = taxGroups.get(fodecKey);
-        // Calculate FODEC for this line
-        const lineHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
+        // CRITICAL: Calculate FODEC for this line - ALL document types
+        let lineHT;
+        if (documentData.type === 'bonLivraison') {
+          // For bon de livraison, use product price directly
+          lineHT = ligne.quantite * ligne.produit.prixUnitaire;
+        } else {
+          // For other documents, use line price with discount
+          lineHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
+        }
         const lineFodec = lineHT * (ligne.produit.tauxFodec / 100);
         fodecGroup.baseAmount += lineHT;
         fodecGroup.taxAmount += lineFodec;
       }
       
-      // TVA calculation - SEPARATE BY RATE
+      // CRITICAL: TVA calculation - SEPARATE BY RATE - ALL document types
       if (ligne.produit.tva > 0) {
         const tvaKey = `TVA_${ligne.produit.tva}`;
         if (!taxGroups.has(tvaKey)) {
@@ -446,8 +453,15 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const tvaGroup = taxGroups.get(tvaKey);
-        // Calculate TVA base for this specific line (HT + FODEC)
-        const lineHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
+        // CRITICAL: Calculate TVA base for this specific line (HT + FODEC) - ALL document types
+        let lineHT;
+        if (documentData.type === 'bonLivraison') {
+          // For bon de livraison, use product price directly
+          lineHT = ligne.quantite * ligne.produit.prixUnitaire;
+        } else {
+          // For other documents, use line price with discount
+          lineHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
+        }
         const lineFodec = ligne.produit.fodecApplicable ? (lineHT * ligne.produit.tauxFodec / 100) : 0;
         const lineBaseTVA = lineHT + lineFodec;
         const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
@@ -458,13 +472,19 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
     });
   }
   
-  // 2. Add taxes from settings (like Timbre fiscal)
+  // 2. Add taxes from settings (like Timbre fiscal) - FOR ALL DOCUMENT TYPES
   try {
     if (isElectron && window.electronAPI) {
       const query = window.electronAPI.dbQuery;
+      // CRITICAL: Get document type for tax filtering
+      const docTypeForTax = documentData.type === 'facture' ? 'factures' : 
+                           documentData.type === 'devis' ? 'devis' : 
+                           documentData.type === 'bonLivraison' ? 'bonsLivraison' : 
+                           'commandesFournisseur';
+      
       const settingsTaxes = await query(`
         SELECT * FROM taxes 
-        WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%${documentData.type === 'facture' ? 'factures' : documentData.type === 'devis' ? 'devis' : documentData.type === 'bonLivraison' ? 'bonsLivraison' : 'commandesFournisseur'}%'
+        WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%${docTypeForTax}%'
         ORDER BY ordre ASC
       `);
       
