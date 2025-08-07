@@ -487,7 +487,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalFodec, totalTVA, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -862,28 +862,28 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax groups summary */}
-                    {taxGroupsSummary.length > 0 && (
+                    {/* Tax summary */}
+                    {(totalFodec > 0 || totalTVA > 0) && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par groupe:</span>
+                            <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
-                          {taxGroupsSummary.map((group, index) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {group.groupName}:
-                              </span>
-                              <span>{formatCurrency(group.taxAmount)}</span>
+                          {totalFodec > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">FODEC:</span>
+                              <span>{formatCurrency(totalFodec)}</span>
                             </div>
-                          ))}
+                          )}
+                          {totalTVA > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">TVA:</span>
+                              <span>{formatCurrency(totalTVA)}</span>
+                            </div>
+                          )}
                         </div>
                         <div className="flex justify-between text-sm font-medium border-t pt-2">
-                          <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
                           <span>{formatCurrency(totalTaxes)}</span>
                         </div>
