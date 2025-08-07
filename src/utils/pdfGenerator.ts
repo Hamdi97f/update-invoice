@@ -290,14 +290,14 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   // Optimized column widths for table (8 columns) - using percentage of available width
   const columnStyles = {
-    0: { cellWidth: availableWidth * 0.08, halign: 'left' },    // Réf: 8%
-    1: { cellWidth: availableWidth * 0.32, halign: 'left' },    // Désignation: 32%
+    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
+    1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
     2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
-    3: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Prix U.: 13%
+    3: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Prix U.: 12%
     4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
-    5: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Total HT: 13%
-    6: { cellWidth: availableWidth * 0.08, halign: 'center' },  // TVA: 8%
-    7: { cellWidth: availableWidth * 0.10, halign: 'right' }    // Total TTC: 10%
+    5: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Total HT: 12%
+    6: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
+    7: { cellWidth: availableWidth * 0.08, halign: 'right' }    // Total TTC: 8%
   };
   
   // Add a default empty row if no data
@@ -364,7 +364,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       lineWidth: 0.2, // Very thin borders
       cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 }, // Compact padding
       overflow: 'linebreak',
-      cellWidth: 'wrap',
+      cellWidth: 'auto',
       fontSize: settings.table.fontSize
     },
     
@@ -379,6 +379,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       if (data.column.index === 1) { // Désignation column
         data.cell.styles.cellWidth = columnStyles[1].cellWidth;
         data.cell.styles.overflow = 'linebreak';
+        data.cell.styles.minCellHeight = 8; // Minimum height for text wrapping
       }
       // Ensure all columns respect their assigned widths
       if (columnStyles[data.column.index]) {
@@ -396,27 +397,6 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   const pageWidth = doc.internal.pageSize.getWidth();
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
-  
-  // Amount in words (if enabled)
-  if (settings.amountInWords.enabled) {
-    const amountInWords = numberToWords(documentData.totalTTC, getCurrencySymbol());
-    doc.setFontSize(settings.amountInWords.fontSize);
-    doc.setTextColor(...hexToRgb(settings.amountInWords.color));
-    doc.setFont('helvetica', 'bold');
-    
-    const amountText = `Arrêté la présente ${documentData.type === 'facture' ? 'facture' : 'document'} à la somme de : ${amountInWords}`;
-    const maxWidth = pageWidth - settings.margins.left - settings.margins.right - 90;
-    
-    let amountX = settings.margins.left;
-    if (settings.amountInWords.position === 'right') {
-      amountX = pageWidth - settings.margins.right - 90;
-    }
-    
-    const splitAmount = doc.splitTextToSize(amountText, maxWidth);
-    doc.text(splitAmount, amountX, currentY);
-    
-    currentY += splitAmount.length * (settings.amountInWords.fontSize * 0.35) + settings.spacing.element;
-  }
   
   // Calculate taxes correctly from lignes AND include settings taxes
   const calculatedTaxes = [];
@@ -624,6 +604,30 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   
   doc.text(`Total TTC:`, rightX - 50, currentY);
   doc.text(formatCurrency(correctTotalTTC), rightX, currentY, { align: 'right' });
+  currentY += settings.spacing.line;
+  
+  // Amount in words (if enabled) - MOVED HERE AFTER ALL TAXES
+  if (settings.amountInWords.enabled) {
+    currentY += settings.spacing.element; // Add some space before amount in words
+    
+    const amountInWords = numberToWords(correctTotalTTC, getCurrencySymbol());
+    doc.setFontSize(settings.amountInWords.fontSize);
+    doc.setTextColor(...hexToRgb(settings.amountInWords.color));
+    doc.setFont('helvetica', 'bold');
+    
+    const amountText = `Arrêté la présente ${documentData.type === 'facture' ? 'facture' : 'document'} à la somme de : ${amountInWords}`;
+    const maxWidth = pageWidth - settings.margins.left - settings.margins.right - 90;
+    
+    let amountX = settings.margins.left;
+    if (settings.amountInWords.position === 'right') {
+      amountX = pageWidth - settings.margins.right - 90;
+    }
+    
+    const splitAmount = doc.splitTextToSize(amountText, maxWidth);
+    doc.text(splitAmount, amountX, currentY);
+    
+    currentY += splitAmount.length * (settings.amountInWords.fontSize * 0.35);
+  }
   
   return currentY + settings.spacing.section;
 };
