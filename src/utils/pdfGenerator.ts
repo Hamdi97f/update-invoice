@@ -395,8 +395,6 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
 // Enhanced totals section
 const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentData: any, startY: number) => {
   const pageWidth = doc.internal.pageSize.getWidth();
-  const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
-  const query = isElectron ? window.electronAPI.dbQuery : undefined;
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
   
@@ -735,10 +733,10 @@ const renderInvoiceOnExistingDocument = async (
   logoUrl?: string
 ) => {
   // Render document sections with enhanced styling on the current page
-  let currentY = renderEnhancedHeader(doc, settings, companyInfo, logoUrl);
+  let currentY = await renderEnhancedHeader(doc, settings, companyInfo, logoUrl);
   currentY = renderEnhancedTitle(doc, settings, documentTitle, documentData, currentY);
   currentY = renderClientSection(doc, settings, documentData, currentY);
-  currentY = renderEnhancedTable(doc, settings, documentData, currentY);
+  currentY = await renderEnhancedTable(doc, settings, documentData, currentY);
   currentY = await renderEnhancedTotalsSection(doc, settings, documentData, currentY);
   renderEnhancedFooter(doc, settings, documentData.notes);
   
