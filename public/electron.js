@@ -342,6 +342,14 @@ function updateDatabaseSchema() {
 
 function addMissingColumns() {
   try {
+    // First, ensure settings table exists
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+    
     // Check clients table for code column
     const clientsTableInfo = db.prepare("PRAGMA table_info(clients)").all();
     const hasCodeColumn = clientsTableInfo.some(col => col.name === 'code');
@@ -439,44 +447,84 @@ function addMissingColumns() {
     // Check lignes_facture table for FODEC columns
     const lignesFactureTableInfo = db.prepare("PRAGMA table_info(lignes_facture)").all();
     const hasLignesFactureFodecColumns = lignesFactureTableInfo.some(col => col.name === 'montantFodec');
+    const hasLignesFactureBaseTVAColumn = lignesFactureTableInfo.some(col => col.name === 'baseTVA');
+    const hasLignesFactureMontantTVAColumn = lignesFactureTableInfo.some(col => col.name === 'montantTVA');
     
     if (!hasLignesFactureFodecColumns) {
       log.info("Adding FODEC columns to lignes_facture table");
       db.exec("ALTER TABLE lignes_facture ADD COLUMN montantFodec REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesFactureBaseTVAColumn) {
+      log.info("Adding baseTVA column to lignes_facture table");
       db.exec("ALTER TABLE lignes_facture ADD COLUMN baseTVA REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesFactureMontantTVAColumn) {
+      log.info("Adding montantTVA column to lignes_facture table");
       db.exec("ALTER TABLE lignes_facture ADD COLUMN montantTVA REAL DEFAULT 0");
     }
 
     // Check lignes_devis table for FODEC columns
     const lignesDevisTableInfo = db.prepare("PRAGMA table_info(lignes_devis)").all();
     const hasLignesDevisFodecColumns = lignesDevisTableInfo.some(col => col.name === 'montantFodec');
+    const hasLignesDevisBaseTVAColumn = lignesDevisTableInfo.some(col => col.name === 'baseTVA');
+    const hasLignesDevisMontantTVAColumn = lignesDevisTableInfo.some(col => col.name === 'montantTVA');
     
     if (!hasLignesDevisFodecColumns) {
       log.info("Adding FODEC columns to lignes_devis table");
       db.exec("ALTER TABLE lignes_devis ADD COLUMN montantFodec REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesDevisBaseTVAColumn) {
+      log.info("Adding baseTVA column to lignes_devis table");
       db.exec("ALTER TABLE lignes_devis ADD COLUMN baseTVA REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesDevisMontantTVAColumn) {
+      log.info("Adding montantTVA column to lignes_devis table");
       db.exec("ALTER TABLE lignes_devis ADD COLUMN montantTVA REAL DEFAULT 0");
     }
 
     // Check lignes_bon_livraison table for FODEC columns
     const lignesBLTableInfo = db.prepare("PRAGMA table_info(lignes_bon_livraison)").all();
     const hasLignesBLFodecColumns = lignesBLTableInfo.some(col => col.name === 'montantFodec');
+    const hasLignesBLBaseTVAColumn = lignesBLTableInfo.some(col => col.name === 'baseTVA');
+    const hasLignesBLMontantTVAColumn = lignesBLTableInfo.some(col => col.name === 'montantTVA');
     
     if (!hasLignesBLFodecColumns) {
       log.info("Adding FODEC columns to lignes_bon_livraison table");
       db.exec("ALTER TABLE lignes_bon_livraison ADD COLUMN montantFodec REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesBLBaseTVAColumn) {
+      log.info("Adding baseTVA column to lignes_bon_livraison table");
       db.exec("ALTER TABLE lignes_bon_livraison ADD COLUMN baseTVA REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesBLMontantTVAColumn) {
+      log.info("Adding montantTVA column to lignes_bon_livraison table");
       db.exec("ALTER TABLE lignes_bon_livraison ADD COLUMN montantTVA REAL DEFAULT 0");
     }
 
     // Check lignes_commande_fournisseur table for FODEC columns
     const lignesCFTableInfo = db.prepare("PRAGMA table_info(lignes_commande_fournisseur)").all();
     const hasLignesCFFodecColumns = lignesCFTableInfo.some(col => col.name === 'montantFodec');
+    const hasLignesCFBaseTVAColumn = lignesCFTableInfo.some(col => col.name === 'baseTVA');
+    const hasLignesCFMontantTVAColumn = lignesCFTableInfo.some(col => col.name === 'montantTVA');
     
     if (!hasLignesCFFodecColumns) {
       log.info("Adding FODEC columns to lignes_commande_fournisseur table");
       db.exec("ALTER TABLE lignes_commande_fournisseur ADD COLUMN montantFodec REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesCFBaseTVAColumn) {
+      log.info("Adding baseTVA column to lignes_commande_fournisseur table");
       db.exec("ALTER TABLE lignes_commande_fournisseur ADD COLUMN baseTVA REAL DEFAULT 0");
+    }
+    
+    if (!hasLignesCFMontantTVAColumn) {
+      log.info("Adding montantTVA column to lignes_commande_fournisseur table");
       db.exec("ALTER TABLE lignes_commande_fournisseur ADD COLUMN montantTVA REAL DEFAULT 0");
     }
 
