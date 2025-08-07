@@ -339,19 +339,56 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
         const existingLigne = productMap.get(productId)!;
         existingLigne.quantite += ligne.quantite;
         
-        // Recalculate amounts based on new quantity
-        existingLigne.montantHT = existingLigne.quantite * existingLigne.prixUnitaire * (1 - existingLigne.remise / 100);
-        existingLigne.montantTTC = existingLigne.montantHT * (1 + existingLigne.produit.tva / 100);
+        // Recalculate amounts based on new quantity using new tax logic
+        const montantHT = existingLigne.quantite * existingLigne.prixUnitaire * (1 - (existingLigne.remise || 0) / 100);
+        
+        // Calculate FODEC
+        const montantFodec = existingLigne.produit.fodecApplicable ? 
+          montantHT * (existingLigne.produit.tauxFodec / 100) : 0;
+        
+        // Calculate TVA base (HT + FODEC)
+        const baseTVA = montantHT + montantFodec;
+        
+        // Calculate TVA
+        const montantTVA = baseTVA * (existingLigne.produit.tva / 100);
+        
+        // Calculate TTC
+        const montantTTC = montantHT + montantFodec + montantTVA;
+        
+        // Update ligne with new calculations
+        existingLigne.montantHT = montantHT;
+        existingLigne.montantFodec = montantFodec;
+        existingLigne.baseTVA = baseTVA;
+        existingLigne.montantTVA = montantTVA;
+        existingLigne.montantTTC = montantTTC;
       } else {
-        // New product, add to map with new ID for the consolidated line
+        // New product, add to map with new ID and proper tax calculations
+        const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
+        
+        // Calculate FODEC
+        const montantFodec = ligne.produit.fodecApplicable ? 
+          montantHT * (ligne.produit.tauxFodec / 100) : 0;
+        
+        // Calculate TVA base (HT + FODEC)
+        const baseTVA = montantHT + montantFodec;
+        
+        // Calculate TVA
+        const montantTVA = baseTVA * (ligne.produit.tva / 100);
+        
+        // Calculate TTC
+        const montantTTC = montantHT + montantFodec + montantTVA;
+        
         const consolidatedLigne: LigneDocument = {
           id: uuidv4(), // New ID for the consolidated line
           produit: ligne.produit,
           quantite: ligne.quantite,
           prixUnitaire: ligne.prixUnitaire,
-          remise: ligne.remise,
-          montantHT: ligne.montantHT,
-          montantTTC: ligne.montantTTC
+          remise: ligne.remise || 0,
+          montantHT,
+          montantFodec,
+          baseTVA,
+          montantTVA,
+          montantTTC
         };
         productMap.set(productId, consolidatedLigne);
       }
@@ -363,55 +400,14 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     // Generate single invoice number
     const factureNumero = await getNextDocumentNumber('factures', true, query);
     
-    // Calculate totals from consolidated lignes
+    // Calculate totals from consolidated lignes using new tax logic
     const totalHT = consolidatedLignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    const totalTVA = consolidatedLignes.reduce((sum, ligne) => sum + (ligne.montantTTC - ligne.montantHT), 0);
+    const totalFodec = consolidatedLignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
+    const totalTVA = consolidatedLignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
+    const totalTTC = consolidatedLignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     
-    // Get active taxes applicable to factures
-    const taxesResult = await query(`
-      SELECT * FROM taxes 
-      WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%factures%'
-      ORDER BY ordre ASC
-    `);
-    
-    // Calculate taxes
-    const taxes = [];
-    let totalTaxes = 0;
-    let runningTotal = totalHT;
-    
-    if (taxesResult && taxesResult.length > 0) {
-      for (const tax of taxesResult) {
-        const applicableDocuments = JSON.parse(tax.applicableDocuments);
-        if (!applicableDocuments.includes('factures')) continue;
-        
-        let base: number;
-        let montant: number;
-        
-        if (tax.type === 'fixed') {
-          base = 0;
-          montant = tax.valeur;
-        } else {
-          if (tax.calculationBase === 'totalHT') {
-            base = totalHT;
-          } else {
-            base = runningTotal;
-          }
-          montant = (base * tax.valeur) / 100;
-        }
-        
-        taxes.push({
-          taxId: tax.id,
-          nom: tax.nom,
-          base,
-          montant
-        });
-        
-        runningTotal += montant;
-        totalTaxes += montant;
-      }
-    }
-    
-    const totalTTC = totalHT + totalTVA + totalTaxes;
+    // CRITICAL: Do NOT copy old taxes - they will be recalculated automatically
+    // The taxes are already calculated in the ligne amounts above
     
     // Create notes with all delivery note numbers
     const notesText = `Converti des bons de livraison : ${bonNumbers.join(', ')}`;
@@ -424,9 +420,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
       client: bonsData[0].client, // All bons have the same client
       lignes: consolidatedLignes,
       totalHT,
+      totalFodec,
       totalTVA,
-      taxes,
-      totalTaxes,
       totalTTC,
       statut: 'brouillon',
       notes: notesText
@@ -435,8 +430,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     // Save the single consolidated facture
     await query(
       `INSERT INTO factures 
-       (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, numero, date, dateEcheance, clientId, totalHT, totalFodec, totalTVA, totalTTC, statut, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         facture.id,
         facture.numero,
@@ -444,6 +439,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
         facture.dateEcheance.toISOString(),
         facture.client.id,
         facture.totalHT,
+        facture.totalFodec,
         facture.totalTVA,
         facture.totalTTC,
         facture.statut,
@@ -455,16 +451,19 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     for (const ligne of facture.lignes) {
       await query(
         `INSERT INTO lignes_facture 
-         (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ligne.id,
           facture.id,
           ligne.produit.id,
           ligne.quantite,
           ligne.prixUnitaire,
-          ligne.remise,
+          ligne.remise || 0,
           ligne.montantHT,
+          ligne.montantFodec || 0,
+          ligne.baseTVA || 0,
+          ligne.montantTVA || 0,
           ligne.montantTTC
         ]
       );

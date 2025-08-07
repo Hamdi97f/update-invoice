@@ -99,24 +99,17 @@ const FactureForm: React.FC<FactureFormProps> = ({
           ...ligne,
           id: uuidv4(),  // Generate new IDs for the avoir lines
           quantite: -ligne.quantite,  // Negative quantity
-          montantHT: -ligne.montantHT,  // Negative amounts
-          montantTTC: -ligne.montantTTC,
-          taxes: ligne.taxes || [],
-          taxesCalculees: Object.fromEntries(
-            Object.entries(ligne.taxesCalculees || {}).map(([key, value]) => [key, -value])
-          )
+          montantHT: -ligne.montantHT,
+          montantFodec: -(ligne.montantFodec || 0),
+          baseTVA: -(ligne.baseTVA || 0),
+          montantTVA: -(ligne.montantTVA || 0),
+          montantTTC: -ligne.montantTTC
         }));
         
         setLignes(avoirLignes);
         
-        // Create negative tax groups summary
-        const avoirTaxGroupsSummary = (originalFacture.taxGroupsSummary || []).map(group => ({
-          ...group,
-          baseAmount: -group.baseAmount,
-          taxAmount: -group.taxAmount
-        }));
-        
-        setTaxGroupsSummary(avoirTaxGroupsSummary);
+        // CRITICAL: Do NOT copy tax groups - they will be recalculated from the negative lines
+        setTaxGroupsSummary([]);
       } else {
         generateNumero();
         // Reset form for new invoice

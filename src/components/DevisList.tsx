@@ -304,51 +304,8 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
     for (const devis of devisData) {
       const factureNumero = await getNextDocumentNumber('factures', true, query);
       
-      // Get active taxes applicable to factures
-      const taxesResult = await query(`
-        SELECT * FROM taxes 
-        WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%factures%'
-        ORDER BY ordre ASC
-      `);
-      
-      // Calculate taxes
-      const taxes = [];
-      let totalTaxes = 0;
-      let runningTotal = devis.totalHT;
-      
-      if (taxesResult && taxesResult.length > 0) {
-        for (const tax of taxesResult) {
-          const applicableDocuments = JSON.parse(tax.applicableDocuments);
-          if (!applicableDocuments.includes('factures')) continue;
-          
-          let base: number;
-          let montant: number;
-          
-          if (tax.type === 'fixed') {
-            base = 0;
-            montant = tax.valeur;
-          } else {
-            if (tax.calculationBase === 'totalHT') {
-              base = devis.totalHT;
-            } else {
-              base = runningTotal;
-            }
-            montant = (base * tax.valeur) / 100;
-          }
-          
-          taxes.push({
-            taxId: tax.id,
-            nom: tax.nom,
-            base,
-            montant
-          });
-          
-          runningTotal += montant;
-          totalTaxes += montant;
-        }
-      }
-      
-      const totalTTC = devis.totalHT + devis.totalTVA + totalTaxes;
+      // CRITICAL: Do NOT copy old taxes - use the devis calculated totals directly
+      // The taxes are already properly calculated in the devis
       
       const facture: Facture = {
         id: uuidv4(),
@@ -358,10 +315,9 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
         client: devis.client,
         lignes: devis.lignes,
         totalHT: devis.totalHT,
+        totalFodec: devis.totalFodec,
         totalTVA: devis.totalTVA,
-        taxes: taxes,
-        totalTaxes: totalTaxes,
-        totalTTC: totalTTC,
+        totalTTC: devis.totalTTC,
         statut: 'brouillon',
         notes: `Converti du devis ${devis.numero}${devis.notes ? ` - ${devis.notes}` : ''}`
       };
@@ -369,8 +325,8 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       // Save facture
       await query(
         `INSERT INTO factures 
-         (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, dateEcheance, clientId, totalHT, totalFodec, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           facture.id,
           facture.numero,
@@ -378,6 +334,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
           facture.dateEcheance.toISOString(),
           facture.client.id,
           facture.totalHT,
+          facture.totalFodec,
           facture.totalTVA,
           facture.totalTTC,
           facture.statut,
@@ -389,16 +346,19 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       for (const ligne of facture.lignes) {
         await query(
           `INSERT INTO lignes_facture 
-           (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             facture.id,
             ligne.produit.id,
             ligne.quantite,
             ligne.prixUnitaire,
-            ligne.remise,
+            ligne.remise || 0,
             ligne.montantHT,
+            ligne.montantFodec || 0,
+            ligne.baseTVA || 0,
+            ligne.montantTVA || 0,
             ligne.montantTTC
           ]
         );
@@ -417,20 +377,28 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
         client: devis.client,
         lignes: devis.lignes,
         statut: 'prepare',
+        totalHT: devis.totalHT,
+        totalFodec: devis.totalFodec,
+        totalTVA: devis.totalTVA,
+        totalTTC: devis.totalTTC,
         notes: `Converti du devis ${devis.numero}${devis.notes ? ` - ${devis.notes}` : ''}`
       };
 
       // Save bon de livraison
       await query(
         `INSERT INTO bons_livraison 
-         (id, numero, date, clientId, statut, notes)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, clientId, statut, totalHT, totalFodec, totalTVA, totalTTC, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bonLivraison.id,
           bonLivraison.numero,
           bonLivraison.date.toISOString(),
           bonLivraison.client.id,
           bonLivraison.statut,
+          bonLivraison.totalHT,
+          bonLivraison.totalFodec || 0,
+          bonLivraison.totalTVA || 0,
+          bonLivraison.totalTTC,
           bonLivraison.notes
         ]
       );
@@ -439,13 +407,20 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       for (const ligne of bonLivraison.lignes) {
         await query(
           `INSERT INTO lignes_bon_livraison 
-           (id, bonLivraisonId, produitId, quantite)
-           VALUES (?, ?, ?, ?)`,
+           (id, bonLivraisonId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             bonLivraison.id,
             ligne.produit.id,
-            ligne.quantite
+            ligne.quantite,
+            ligne.prixUnitaire,
+            ligne.remise || 0,
+            ligne.montantHT,
+            ligne.montantFodec || 0,
+            ligne.baseTVA || 0,
+            ligne.montantTVA || 0,
+            ligne.montantTTC
           ]
         );
       }
