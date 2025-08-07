@@ -329,70 +329,77 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
   };
 
   const calculateTotals = () => {
-    // Calculate totals from product lines (taxes already included)
+    // Calculate totals from product lines with proper FODEC and TVA
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    const totalFodec = lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
-    const totalTVA = lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
-    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
+    
+    // Calculate FODEC totals
+    let totalFodec = 0;
+    const fodecGroups = new Map();
+    lignes.forEach(ligne => {
+      if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
+        const lineFodec = ligne.montantHT * (ligne.produit.tauxFodec / 100);
+        totalFodec += lineFodec;
+        
+        const rate = ligne.produit.tauxFodec;
+        if (!fodecGroups.has(rate)) {
+          fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+        }
+        const group = fodecGroups.get(rate);
+        group.baseAmount += ligne.montantHT;
+        group.taxAmount += lineFodec;
+      }
+    });
+    
+    // Calculate TVA totals (on HT + FODEC base)
+    let totalTVA = 0;
+    const tvaGroups = new Map();
+    lignes.forEach(ligne => {
+      if (ligne.produit.tva > 0) {
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
+        const lineBaseTVA = ligne.montantHT + lineFodec;
+        const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
+        totalTVA += lineTVA;
+        
+        const rate = ligne.produit.tva;
+        if (!tvaGroups.has(rate)) {
+          tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+        }
+        const group = tvaGroups.get(rate);
+        group.baseAmount += lineBaseTVA;
+        group.taxAmount += lineTVA;
+      }
+    });
     
     // Create tax summary for display
     const taxSummary = [];
     
-    // Add FODEC summary if applicable
-    if (totalFodec > 0) {
-      const fodecGroups = new Map();
-      lignes.forEach(ligne => {
-        if (ligne.produit.fodecApplicable && ligne.montantFodec > 0) {
-          const rate = ligne.produit.tauxFodec;
-          if (!fodecGroups.has(rate)) {
-            fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
-          }
-          const group = fodecGroups.get(rate);
-          group.baseAmount += ligne.montantHT;
-          group.taxAmount += ligne.montantFodec;
-        }
+    // Add FODEC summary
+    fodecGroups.forEach((group, rate) => {
+      taxSummary.push({
+        type: 'FODEC',
+        rate,
+        baseAmount: group.baseAmount,
+        taxAmount: group.taxAmount
       });
-      
-      fodecGroups.forEach((group, rate) => {
-        taxSummary.push({
-          type: 'FODEC',
-          rate,
-          baseAmount: group.baseAmount,
-          taxAmount: group.taxAmount
-        });
-      });
-    }
+    });
     
-    // Add TVA summary if applicable
-    if (totalTVA > 0) {
-      const tvaGroups = new Map();
-      lignes.forEach(ligne => {
-        if (ligne.produit.tva > 0) {
-          const rate = ligne.produit.tva;
-          if (!tvaGroups.has(rate)) {
-            tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
-          }
-          const group = tvaGroups.get(rate);
-          group.baseAmount += ligne.baseTVA || (ligne.montantHT + (ligne.montantFodec || 0));
-          group.taxAmount += ligne.montantTVA;
-        }
+    // Add TVA summary
+    tvaGroups.forEach((group, rate) => {
+      taxSummary.push({
+        type: 'TVA',
+        rate,
+        baseAmount: group.baseAmount,
+        taxAmount: group.taxAmount
       });
-      
-      tvaGroups.forEach((group, rate) => {
-        taxSummary.push({
-          type: 'TVA',
-          rate,
-          baseAmount: group.baseAmount,
-          taxAmount: group.taxAmount
-        });
-      });
-    }
+    });
+    
+    const totalTTC = totalHT + totalFodec + totalTVA;
     
     return { 
       totalHT, 
       totalFodec,
       totalTVA,
-      totalTaxes: totalFodec + totalTVA, 
+      totalTaxes: totalFodec + totalTVA,
       taxSummary, 
       totalTTC 
     };
