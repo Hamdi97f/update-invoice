@@ -845,7 +845,7 @@ ipcMain.handle('get-factures', async () => {
     // For each facture, load its lines
     for (const facture of factures) {
       const lignes = db.prepare(`
-        SELECT lf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
+        SELECT lf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.fodecApplicable, p.tauxFodec, p.stock, p.type
         FROM lignes_facture lf
         JOIN produits p ON lf.produitId = p.id
         WHERE lf.factureId = ?
@@ -860,6 +860,8 @@ ipcMain.handle('get-factures', async () => {
           description: ligne.description,
           prixUnitaire: ligne.prixUnitaire,
           tva: ligne.tva,
+          fodecApplicable: Boolean(ligne.fodecApplicable),
+          tauxFodec: ligne.tauxFodec || 1,
           stock: ligne.stock,
           type: ligne.type || 'vente'
         },
@@ -867,6 +869,9 @@ ipcMain.handle('get-factures', async () => {
         prixUnitaire: ligne.prixUnitaire,
         remise: ligne.remise,
         montantHT: ligne.montantHT,
+        montantFodec: ligne.montantFodec || 0,
+        baseTVA: ligne.baseTVA || 0,
+        montantTVA: ligne.montantTVA || 0,
         montantTTC: ligne.montantTTC
       }));
       
