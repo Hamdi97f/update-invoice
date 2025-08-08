@@ -288,6 +288,82 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
+  const calculateTotals = () => {
+    // Calculate totals from product lines with proper FODEC and TVA
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    
+    // Calculate FODEC totals
+    let totalFodec = 0;
+    const fodecGroups = new Map();
+    lignes.forEach(ligne => {
+      if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
+        const lineFodec = ligne.montantHT * (ligne.produit.tauxFodec / 100);
+        totalFodec += lineFodec;
+        
+        const rate = ligne.produit.tauxFodec;
+        if (!fodecGroups.has(rate)) {
+          fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+        }
+        const group = fodecGroups.get(rate);
+        group.baseAmount += ligne.montantHT;
+        group.taxAmount += lineFodec;
+      }
+    });
+    
+    // Calculate TVA totals (on HT + FODEC base)
+    let totalTVA = 0;
+    const tvaGroups = new Map();
+    lignes.forEach(ligne => {
+      if (ligne.produit.tva > 0) {
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
+        const lineBaseTVA = ligne.montantHT + lineFodec;
+        const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
+        totalTVA += lineTVA;
+        
+        const rate = ligne.produit.tva;
+        if (!tvaGroups.has(rate)) {
+          tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+        }
+        const group = tvaGroups.get(rate);
+        group.baseAmount += lineBaseTVA;
+        group.taxAmount += lineTVA;
+      }
+    });
+    
+    // Create tax summary for display
+    const taxSummary = [];
+    
+    // Add FODEC summary
+    fodecGroups.forEach((group, rate) => {
+      taxSummary.push({
+        type: 'FODEC',
+        rate,
+        baseAmount: group.baseAmount,
+        taxAmount: group.taxAmount
+      });
+    });
+    
+    // Add TVA summary
+    tvaGroups.forEach((group, rate) => {
+      taxSummary.push({
+        type: 'TVA',
+        rate,
+        baseAmount: group.baseAmount,
+        taxAmount: group.taxAmount
+      });
+    });
+    
+    const totalTTC = totalHT + totalFodec + totalTVA;
+    
+    return { 
+      totalHT, 
+      totalFodec,
+      totalTVA,
+      totalTaxes: totalFodec + totalTVA, 
+      taxSummary, 
+      totalTTC 
+    };
+  };
 
   const handleSave = async () => {
     if (!isReady) return;
@@ -777,20 +853,16 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par groupe:</span>
+                            <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
                           {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">
-                                {group.groupName}:
+                                {group.type} {group.rate}%:
                               </span>
                               <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
                           ))}
-                        </div>
-                        <div className="flex justify-between text-sm font-medium border-t pt-2">
-                          <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                         <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
