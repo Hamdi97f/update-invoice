@@ -518,7 +518,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalFodec, totalTVA, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
