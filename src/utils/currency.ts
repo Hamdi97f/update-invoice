@@ -82,6 +82,9 @@ export const getCurrencyDecimals = (): number => {
   return getCurrencySettings().decimals;
 };
 
+// Ensure this function is properly exported
+export { getCurrencySettingsFromDB, formatCurrencyWithSettings };
+
 export const parseCurrency = (value: string): number => {
   return parseFloat(value.replace(/[^\d.-]/g, '')) || 0;
 };
