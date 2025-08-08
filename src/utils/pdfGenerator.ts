@@ -456,9 +456,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const tvaGroup = taxGroups.get(tvaKey);
-          tax.isFixed ? '-' : currencyFormatter(tax.base),
         const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantFodec || (ligne.montantHT * (ligne.produit.tauxFodec || 1) / 100)) : 0;
-          currencyFormatter(tax.montant)
         const lineTVA = ligne.montantTVA || (lineBaseTVA * (ligne.produit.tva / 100));
         
         tvaGroup.baseAmount += lineBaseTVA;
