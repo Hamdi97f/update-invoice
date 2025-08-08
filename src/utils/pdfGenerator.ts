@@ -11,11 +11,6 @@ import { calculateTaxesByGroup, loadTaxGroups } from './productTaxCalculator';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
 
-// Helper function for currency formatting in PDF
-const formatCurrencyForPDF = (amount: number) => {
-  return formatCurrency(amount);
-};
-
 // Load template settings with enhanced configuration
 const getTemplateSettings = async (isElectron: boolean, query?: any) => {
   const defaultSettings = {
@@ -255,7 +250,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   const pageWidth = doc.internal.pageSize.getWidth();
   const availableWidth = pageWidth - settings.margins.left - settings.margins.right;
   
-  // Table format WITHOUT FODEC column - FODEC goes in tax details section
+  // Table format without FODEC column (FODEC is included in calculations but not displayed)
   const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'TVA', 'Total TTC'];
   
   // Ensure lignes is an array and has items
@@ -267,30 +262,29 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   let tableData;
   
-  // Standard table format for all document types - NO FODEC column
   if (documentData.type === 'bonLivraison') {
-    // For bon de livraison, use product prices for display
+    // For bon de livraison, show all columns with calculated values
     tableData = validLines.map((ligne: any) => [
       ligne.produit.ref || '-',
       ligne.produit.nom,
       ligne.quantite.toString(),
-      formatCurrencyForPDF(ligne.produit.prixUnitaire),
+      formatCurrency(ligne.produit.prixUnitaire),
       '0%',
-      formatCurrencyForPDF(ligne.produit.prixUnitaire * ligne.quantite),
+      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
       `${ligne.produit.tva}%`,
-      formatCurrencyForPDF(ligne.produit.prixUnitaire * ligne.quantite * (1 + (ligne.produit.fodecApplicable ? ligne.produit.tauxFodec / 100 : 0) + ligne.produit.tva / 100))
+      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
     ]);
   } else {
-    // For other document types (factures, devis, commandes)
+    // For other document types without FODEC column
     tableData = validLines.map((ligne: any) => [
       ligne.produit.ref || '-',
       ligne.produit.nom,
       ligne.quantite.toString(),
-      formatCurrencyForPDF(ligne.prixUnitaire),
+      formatCurrency(ligne.prixUnitaire),
       `${ligne.remise || 0}%`,
-      formatCurrencyForPDF(ligne.montantHT),
+      formatCurrency(ligne.montantHT),
       `${ligne.produit.tva}%`,
-      formatCurrencyForPDF(ligne.montantTTC)
+      formatCurrency(ligne.montantTTC)
     ]);
   }
   
@@ -298,17 +292,17 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   const columnStyles = {
     0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
     1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
-    2: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Qté: 10%
-    3: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Prix U.: 13%
-    4: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Remise: 10%
-    5: { cellWidth: availableWidth * 0.13, halign: 'right' },   // Total HT: 13%
-    6: { cellWidth: availableWidth * 0.09, halign: 'center' },  // TVA: 9%
-    7: { cellWidth: availableWidth * 0.13, halign: 'right' }    // Total TTC: 13%
+    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
+    3: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Prix U.: 12%
+    4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
+    5: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Total HT: 12%
+    6: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
+    7: { cellWidth: availableWidth * 0.08, halign: 'right' }    // Total TTC: 8%
   };
   
   // Add a default empty row if no data
   if (!tableData || tableData.length === 0) {
-    tableData = [['-', 'Aucun produit', '0', formatCurrencyForPDF(0), '0%', formatCurrencyForPDF(0), '0%', formatCurrencyForPDF(0)]];
+    tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0%', '0.000 TND']];
   }
   
   // Table theme based on settings
@@ -404,18 +398,18 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
   
-  // CRITICAL FIX: Calculate taxes correctly from lignes for ALL document types
+  // Calculate taxes correctly from lignes AND include settings taxes
   const calculatedTaxes = [];
   const isElectron = typeof window !== 'undefined' && window.electronAPI ? true : false;
   
-  // 1. CRITICAL: Group taxes by type and rate from product lines (FODEC and TVA) - FOR ALL DOCUMENT TYPES
+  // 1. Group taxes by type and rate from product lines (FODEC and TVA)
   const taxGroups = new Map();
   
   if (documentData.lignes && Array.isArray(documentData.lignes)) {
     documentData.lignes.forEach((ligne: any) => {
       if (!ligne.produit) return;
       
-      // CRITICAL: FODEC calculation for ALL document types
+      // FODEC calculation
       if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
         const fodecKey = `FODEC_${ligne.produit.tauxFodec}`;
         if (!taxGroups.has(fodecKey)) {
@@ -427,21 +421,11 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const fodecGroup = taxGroups.get(fodecKey);
-        // CRITICAL: Calculate FODEC for this line - ALL document types
-        let lineHT;
-        if (documentData.type === 'bonLivraison') {
-          // For bon de livraison, use product price directly
-          lineHT = ligne.quantite * ligne.produit.prixUnitaire;
-        } else {
-          // For other documents, use line price with discount
-          lineHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
-        }
-        const lineFodec = lineHT * (ligne.produit.tauxFodec / 100);
-        fodecGroup.baseAmount += lineHT;
-        fodecGroup.taxAmount += lineFodec;
+        fodecGroup.baseAmount += ligne.montantHT;
+        fodecGroup.taxAmount += ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100);
       }
       
-      // CRITICAL: TVA calculation - SEPARATE BY RATE - ALL document types
+      // TVA calculation - SEPARATE BY RATE
       if (ligne.produit.tva > 0) {
         const tvaKey = `TVA_${ligne.produit.tva}`;
         if (!taxGroups.has(tvaKey)) {
@@ -453,17 +437,9 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const tvaGroup = taxGroups.get(tvaKey);
-        // CRITICAL: Calculate TVA base for this specific line (HT + FODEC) - ALL document types
-        let lineHT;
-        if (documentData.type === 'bonLivraison') {
-          // For bon de livraison, use product price directly
-          lineHT = ligne.quantite * ligne.produit.prixUnitaire;
-        } else {
-          // For other documents, use line price with discount
-          lineHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
-        }
-        const lineFodec = ligne.produit.fodecApplicable ? (lineHT * ligne.produit.tauxFodec / 100) : 0;
-        const lineBaseTVA = lineHT + lineFodec;
+        // Calculate base TVA for this specific line
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
+        const lineBaseTVA = ligne.montantHT + lineFodec;
         const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
         
         tvaGroup.baseAmount += lineBaseTVA;
@@ -472,32 +448,21 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
     });
   }
   
-  // 2. Add taxes from settings (like Timbre fiscal) - ONLY FOR INVOICES
+  // 2. Add taxes from settings (like Timbre fiscal)
   try {
     if (isElectron && window.electronAPI) {
       const query = window.electronAPI.dbQuery;
-      // CRITICAL: Get document type for tax filtering
-      const docTypeForTax = documentData.type === 'facture' ? 'factures' : 
-                           documentData.type === 'devis' ? 'devis' : 
-                           documentData.type === 'bonLivraison' ? 'bonsLivraison' : 
-                           'commandesFournisseur';
-      
       const settingsTaxes = await query(`
         SELECT * FROM taxes 
-        WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%${docTypeForTax}%'
+        WHERE actif = 1 AND json_extract(applicableDocuments, '$') LIKE '%${documentData.type === 'facture' ? 'factures' : documentData.type === 'devis' ? 'devis' : documentData.type === 'bonLivraison' ? 'bonsLivraison' : 'commandesFournisseur'}%'
         ORDER BY ordre ASC
       `);
       
-      // Add settings taxes (like Timbre fiscal) - ONLY FOR INVOICES
+      // Add settings taxes (like Timbre fiscal)
       if (settingsTaxes && settingsTaxes.length > 0) {
         for (const tax of settingsTaxes) {
           // Skip if it's a TVA tax (already calculated from products)
           if (tax.nom.toLowerCase().includes('tva')) continue;
-          
-          // CRITICAL: Only add Timbre fiscal for invoices
-          if (tax.nom.toLowerCase().includes('timbre') && documentData.type !== 'facture') {
-            continue;
-          }
           
           const taxKey = `SETTINGS_${tax.nom}`;
           if (!taxGroups.has(taxKey)) {

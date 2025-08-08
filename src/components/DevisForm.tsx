@@ -185,126 +185,9 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       return;
     }
 
-    // Calculate taxes using standardized logic
-    const result = calculateDocumentTotals(lignes);
-    setTaxGroupsSummary(result.taxSummary);
-  };
-
-  const calculateDocumentTotals = (lignes: LigneDocument[]) => {
-    // Calculate totals from product lines with proper FODEC and TVA
-    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    
-    // Calculate FODEC totals
-    let totalFodec = 0;
-    const fodecGroups = new Map();
-    lignes.forEach(ligne => {
-      if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
-        const lineFodec = ligne.montantHT * (ligne.produit.tauxFodec / 100);
-        totalFodec += lineFodec;
-        
-        const rate = ligne.produit.tauxFodec;
-        if (!fodecGroups.has(rate)) {
-          fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
-        }
-        const group = fodecGroups.get(rate);
-        group.baseAmount += ligne.montantHT;
-        group.taxAmount += lineFodec;
-      }
-    });
-    
-    // Calculate TVA totals (on HT + FODEC base)
-    let totalTVA = 0;
-    const tvaGroups = new Map();
-    lignes.forEach(ligne => {
-      if (ligne.produit.tva > 0) {
-        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
-        const lineBaseTVA = ligne.montantHT + lineFodec;
-        const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
-        totalTVA += lineTVA;
-        
-        const rate = ligne.produit.tva;
-        if (!tvaGroups.has(rate)) {
-          tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
-        }
-        const group = tvaGroups.get(rate);
-        group.baseAmount += lineBaseTVA;
-        group.taxAmount += lineTVA;
-      }
-    });
-    
-    // Create tax summary for display
-    const taxSummary = [];
-    
-    // Add FODEC summary
-    fodecGroups.forEach((group, rate) => {
-      taxSummary.push({
-        type: 'FODEC',
-        rate,
-        baseAmount: group.baseAmount,
-        taxAmount: group.taxAmount,
-        groupName: `FODEC ${rate}%`
-      });
-    });
-    
-    // Add TVA summary
-    tvaGroups.forEach((group, rate) => {
-      taxSummary.push({
-        type: 'TVA',
-        rate,
-        baseAmount: group.baseAmount,
-        taxAmount: group.taxAmount,
-        groupName: `TVA ${rate}%`
-      });
-    });
-    
-    const totalTTC = totalHT + totalFodec + totalTVA;
-    
-    return { 
-      totalHT, 
-      totalFodec,
-      totalTVA,
-      totalTaxes: totalFodec + totalTVA,
-      taxSummary, 
-      totalTTC 
-    };
-  };
-
-  const calculateProductTaxes = (ligne: LigneDocument) => {
-    // Recalculate amounts
-    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
-    ligne.montantHT = montantHT;
-    
-    // Calculate FODEC
-    const montantFodec = ligne.produit.fodecApplicable ? 
-      montantHT * (ligne.produit.tauxFodec / 100) : 0;
-    ligne.montantFodec = montantFodec;
-    
-    // Calculate TVA base (HT + FODEC)
-    const baseTVA = montantHT + montantFodec;
-    ligne.baseTVA = baseTVA;
-    
-    // Calculate TVA
-    const montantTVA = baseTVA * (ligne.produit.tva / 100);
-    ligne.montantTVA = montantTVA;
-    
-    // Calculate TTC
-    ligne.montantTTC = montantHT + montantFodec + montantTVA;
-
-    return ligne;
-  };
-
-  const calculateTotals = () => {
-    // Use standardized calculation for all document types
-    const result = calculateDocumentTotals(lignes);
-    
-    return { 
-      totalHT: result.totalHT, 
-      totalFodec: result.totalFodec,
-      totalTVA: result.totalTVA,
-      totalTaxes: result.totalFodec + result.totalTVA,
-      taxSummary: result.taxSummary, 
-      totalTTC: result.totalTTC 
-    };
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups);
+    setTaxGroupsSummary(taxGroupsSummary);
   };
 
   // Filter clients based on search term
@@ -347,28 +230,23 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       const montantHT = ligne.quantite * ligne.prixUnitaire;
       ligne.montantHT = montantHT;
       
-      // Use standardized tax calculation
-      const updatedLigne = calculateProductTaxes(ligne);
-      newLignes[existingLineIndex] = updatedLigne;
+      // Calculate TTC based on product tax rate
+      ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
       
       setLignes(newLignes);
     } else {
+      const montantHT = produit.prixUnitaire;
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: produit.prixUnitaire,
-        montantFodec: 0,
-        baseTVA: 0,
-        montantTVA: 0,
-        montantTTC: 0
+        montantHT,
+        montantTTC: montantHT * (1 + produit.tva / 100)
       };
-      
-      // Use standardized tax calculation
-      const calculatedLigne = calculateProductTaxes(newLigne);
-      setLignes([...lignes, calculatedLigne]);
+      setLignes([...lignes, newLigne]);
       
       // Ensure tax group exists for this product
       ensureTaxGroupForProduct(produit.tva, query);
@@ -398,27 +276,24 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
     ligne.montantHT = montantHT;
     
-    // Calculate FODEC
-    const montantFodec = ligne.produit.fodecApplicable ? 
-      montantHT * (ligne.produit.tauxFodec / 100) : 0;
-    ligne.montantFodec = montantFodec;
-    
-    // Calculate TVA base (HT + FODEC)
-    const baseTVA = montantHT + montantFodec;
-    ligne.baseTVA = baseTVA;
-    
-    // Calculate TVA
-    const montantTVA = baseTVA * (ligne.produit.tva / 100);
-    ligne.montantTVA = montantTVA;
-    
-    // Calculate TTC
-    ligne.montantTTC = montantHT + montantFodec + montantTVA;
+    // Calculate TTC for this line based on product tax rate
+    ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
 
     setLignes(newLignes);
   };
 
   const handleRemoveLigne = (index: number) => {
     setLignes(lignes.filter((_, i) => i !== index));
+  };
+
+  const calculateTotals = () => {
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    
+    // Calculate taxes by group
+    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'devis');
+    const totalTTC = totalHT + totalTaxes;
+    
+    return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };
   };
 
   const handleSave = async () => {
@@ -433,7 +308,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       // Increment document number only when actually saving
       const finalNumero = await getNextDocumentNumber('devis', isElectron, query, true);
       
-      const { totalHT, totalTaxes, taxSummary, totalTTC } = calculateTotals();
+      const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
 
       const devisData: Devis = {
         id: devis?.id || uuidv4(),
@@ -443,7 +318,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         client: selectedClient,
         lignes,
         totalHT,
-        taxGroupsSummary: taxSummary,
+        taxGroupsSummary,
         totalTaxes,
         totalTTC,
         statut: formData.statut,
@@ -453,8 +328,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       // Save devis to database
       await query(
         `INSERT OR REPLACE INTO devis 
-         (id, numero, date, dateValidite, clientId, totalHT, totalFodec, totalTVA, totalTTC, statut, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, dateValidite, clientId, totalHT, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           devisData.id,
           devisData.numero,
@@ -462,7 +337,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
           devisData.dateValidite.toISOString(),
           devisData.client.id,
           devisData.totalHT,
-          devisData.totalFodec,
           devisData.totalTaxes,
           devisData.totalTTC,
           devisData.statut,
@@ -477,8 +351,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       for (const ligne of lignes) {
         await query(
           `INSERT INTO lignes_devis 
-           (id, devisId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, devisId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             devisData.id,
@@ -487,9 +361,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
             ligne.prixUnitaire,
             ligne.remise || 0,
             ligne.montantHT,
-            ligne.montantFodec || 0,
-            ligne.baseTVA || 0,
-            ligne.montantTVA || 0,
             ligne.montantTTC
           ]
         );
@@ -872,8 +743,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
                           <td className="px-4 py-3 text-sm font-medium">
                             {formatCurrency(ligne.montantHT)}
                           </td>
-                          <td className="px-4 py-3 text-sm">
-                            {ligne.produit.tva}%
+                          <td className="px-4 py-3 text-sm font-medium">
+                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-green-600">
                             {formatCurrency(ligne.montantTTC)}
