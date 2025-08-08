@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Store, ShoppingCart } from 'lucide-react';
+import { X, Save, Store, ShoppingCart, CheckCircle } from 'lucide-react';
 import { Produit } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,11 +27,13 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { query, isReady } = useDatabase();
 
   useEffect(() => {
     if (isOpen && isReady) {
       setError(null);
+      setSuccessMessage(null);
       if (produit) {
         setFormData({
           ref: produit.ref || '',
@@ -164,7 +166,34 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
         ensureTaxGroupForProduct(produitData.tva, query);
       }
       
-      onClose();
+      // Show success message and reset form for new product
+      setSuccessMessage(`Produit "${produitData.nom}" créé avec succès!`);
+      
+      // Reset form for next product
+      setFormData({
+        ref: '',
+        nom: '',
+        description: '',
+        prixUnitaire: 0,
+        tva: 19,
+        fodecApplicable: false,
+        tauxFodec: 1,
+        stock: 0,
+        type: formData.type // Keep the same type
+      });
+      
+      // Generate new ref for next product
+      generateProductRef(formData.type);
+      
+      // Auto-hide success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+      
+      // Only close if editing existing product
+      if (produit) {
+        onClose();
+      }
     } catch (error: any) {
       console.error('Error saving produit:', error);
       setError(`Erreur lors de la sauvegarde du produit: ${error.message || 'Erreur inconnue'}`);
@@ -177,6 +206,7 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
     setFormData(prev => ({ ...prev, [field]: value }));
     if (field === 'nom' || field === 'prixUnitaire') {
       setError(null); // Clear error when user edits required fields
+      setSuccessMessage(null); // Clear success message when user starts editing
     }
   };
 
@@ -212,6 +242,13 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md">
               {error}
+            </div>
+          )}
+          
+          {successMessage && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-md flex items-center">
+              <CheckCircle className="w-5 h-5 mr-2 text-green-600" />
+              {successMessage}
             </div>
           )}
           
@@ -445,7 +482,7 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
               className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
               disabled={isSubmitting}
             >
-              Annuler
+              {produit ? 'Annuler' : 'Fermer'}
             </button>
             <button
               type="submit"
@@ -457,7 +494,7 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
               disabled={isSubmitting || !isReady}
             >
               <Save className="w-4 h-4 mr-2" />
-              {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+              {isSubmitting ? 'Enregistrement...' : produit ? 'Modifier' : 'Créer le produit'}
             </button>
           </div>
         </form>
