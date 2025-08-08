@@ -250,15 +250,8 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   const pageWidth = doc.internal.pageSize.getWidth();
   const availableWidth = pageWidth - settings.margins.left - settings.margins.right;
   
-  // Check if any line has a discount (remise > 0)
-  const hasDiscounts = documentData.lignes && documentData.lignes.some((ligne: any) => 
-    ligne.remise && ligne.remise > 0
-  );
-  
-  // Table format - conditionally include remise column
-  const tableHeaders = hasDiscounts 
-    ? ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'TVA', 'Total TTC']
-    : ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Total HT', 'TVA', 'Total TTC'];
+  // Table format without FODEC column (FODEC is included in calculations but not displayed)
+  const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'TVA', 'Total TTC'];
   
   // Ensure lignes is an array and has items
   const validLines = Array.isArray(documentData.lignes) ? documentData.lignes.filter((ligne: any) => 
@@ -271,85 +264,45 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   if (documentData.type === 'bonLivraison') {
     // For bon de livraison, show all columns with calculated values
-    tableData = validLines.map((ligne: any) => {
-      const baseRow = [
-        ligne.produit.ref || '-',
-        ligne.produit.nom,
-        ligne.quantite.toString(),
-        formatCurrency(ligne.produit.prixUnitaire),
-      ];
-      
-      if (hasDiscounts) {
-        baseRow.push('0%'); // Remise column
-      }
-      
-      baseRow.push(
-        formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
-        `${ligne.produit.tva}%`,
-        formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
-      );
-      
-      return baseRow;
-    });
+    tableData = validLines.map((ligne: any) => [
+      ligne.produit.ref || '-',
+      ligne.produit.nom,
+      ligne.quantite.toString(),
+      formatCurrency(ligne.produit.prixUnitaire),
+      '0%',
+      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
+      `${ligne.produit.tva}%`,
+      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
+    ]);
   } else {
-    // For other document types
-    tableData = validLines.map((ligne: any) => {
-      const baseRow = [
-        ligne.produit.ref || '-',
-        ligne.produit.nom,
-        ligne.quantite.toString(),
-        formatCurrency(ligne.prixUnitaire),
-      ];
-      
-      if (hasDiscounts) {
-        baseRow.push(`${ligne.remise || 0}%`); // Remise column
-      }
-      
-      baseRow.push(
-        formatCurrency(ligne.montantHT),
-        `${ligne.produit.tva}%`,
-        formatCurrency(ligne.montantTTC)
-      );
-      
-      return baseRow;
-    });
+    // For other document types without FODEC column
+    tableData = validLines.map((ligne: any) => [
+      ligne.produit.ref || '-',
+      ligne.produit.nom,
+      ligne.quantite.toString(),
+      formatCurrency(ligne.prixUnitaire),
+      `${ligne.remise || 0}%`,
+      formatCurrency(ligne.montantHT),
+      `${ligne.produit.tva}%`,
+      formatCurrency(ligne.montantTTC)
+    ]);
   }
   
-  // Optimized column widths - adjust based on whether remise column is included
-  let columnStyles: any = {};
-  
-  if (hasDiscounts) {
-    // 8 columns with remise
-    columnStyles = {
-      0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
-      1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
-      2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
-      3: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Prix U.: 12%
-      4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
-      5: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Total HT: 12%
-      6: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
-      7: { cellWidth: availableWidth * 0.08, halign: 'right' }    // Total TTC: 8%
-    };
-  } else {
-    // 7 columns without remise - redistribute width
-    columnStyles = {
-      0: { cellWidth: availableWidth * 0.12, halign: 'left' },    // Réf: 12%
-      1: { cellWidth: availableWidth * 0.40, halign: 'left' },    // Désignation: 40%
-      2: { cellWidth: availableWidth * 0.10, halign: 'center' },  // Qté: 10%
-      3: { cellWidth: availableWidth * 0.14, halign: 'right' },   // Prix U.: 14%
-      4: { cellWidth: availableWidth * 0.14, halign: 'right' },   // Total HT: 14%
-      5: { cellWidth: availableWidth * 0.08, halign: 'center' },  // TVA: 8%
-      6: { cellWidth: availableWidth * 0.12, halign: 'right' }    // Total TTC: 12%
-    };
-  }
+  // Optimized column widths for table (8 columns) - using percentage of available width
+  const columnStyles = {
+    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
+    1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
+    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
+    3: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Prix U.: 12%
+    4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
+    5: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Total HT: 12%
+    6: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
+    7: { cellWidth: availableWidth * 0.08, halign: 'right' }    // Total TTC: 8%
+  };
   
   // Add a default empty row if no data
   if (!tableData || tableData.length === 0) {
-    if (hasDiscounts) {
-      tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0%', '0.000 TND']];
-    } else {
-      tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0.000 TND', '0%', '0.000 TND']];
-    }
+    tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0%', '0.000 TND']];
   }
   
   // Table theme based on settings
