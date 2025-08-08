@@ -1,12 +1,12 @@
 import { LigneDocument, TaxGroupSummary, Produit } from '../types';
 
-// Calculate taxes for a single product line using the new logic
+// Calculate taxes for a single product line using the standardized logic
 export const calculateProductTaxes = (ligne: LigneDocument): LigneDocument => {
-  const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
+  const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
   
   // Step 1: Calculate FODEC
   let montantFodec = 0;
-  if (ligne.produit.fodecApplicable) {
+  if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
     montantFodec = montantHT * (ligne.produit.tauxFodec / 100);
   }
   
@@ -29,18 +29,18 @@ export const calculateProductTaxes = (ligne: LigneDocument): LigneDocument => {
   };
 };
 
-// Calculate totals for all lines
+// Calculate totals for all lines - STANDARDIZED FOR ALL DOCUMENT TYPES
 export const calculateDocumentTotals = (lignes: LigneDocument[]) => {
   // Recalculate each line first
   const calculatedLignes = lignes.map(ligne => calculateProductTaxes(ligne));
   
   // Calculate totals
   const totalHT = calculatedLignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-  const totalFodec = calculatedLignes.reduce((sum, ligne) => sum + ligne.montantFodec, 0);
-  const totalTVA = calculatedLignes.reduce((sum, ligne) => sum + ligne.montantTVA, 0);
+  const totalFodec = calculatedLignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
+  const totalTVA = calculatedLignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
   const totalTTC = calculatedLignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
   
-  // Create tax summary by type
+  // Create tax summary by type and rate - STANDARDIZED
   const taxSummary: TaxGroupSummary[] = [];
   
   // FODEC summary (if any products have FODEC)
@@ -49,8 +49,8 @@ export const calculateDocumentTotals = (lignes: LigneDocument[]) => {
     const fodecGroups = new Map<number, { baseAmount: number; taxAmount: number }>();
     
     calculatedLignes.forEach(ligne => {
-      if (ligne.produit.fodecApplicable && ligne.montantFodec > 0) {
-        const rate = ligne.produit.tauxFodec;
+      if (ligne.produit.fodecApplicable && ligne.montantFodec && ligne.montantFodec > 0) {
+        const rate = ligne.produit.tauxFodec || 1;
         if (!fodecGroups.has(rate)) {
           fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
         }
@@ -75,13 +75,13 @@ export const calculateDocumentTotals = (lignes: LigneDocument[]) => {
     const tvaGroups = new Map<number, { baseAmount: number; taxAmount: number }>();
     
     calculatedLignes.forEach(ligne => {
-      if (ligne.produit.tva > 0) {
+      if (ligne.produit.tva > 0 && ligne.montantTVA && ligne.montantTVA > 0) {
         const rate = ligne.produit.tva;
         if (!tvaGroups.has(rate)) {
           tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
         }
         const group = tvaGroups.get(rate)!;
-        group.baseAmount += ligne.baseTVA; // Use TVA base (HT + FODEC)
+        group.baseAmount += ligne.baseTVA || (ligne.montantHT + (ligne.montantFodec || 0)); // Use TVA base (HT + FODEC)
         group.taxAmount += ligne.montantTVA;
       }
     });
@@ -106,7 +106,7 @@ export const calculateDocumentTotals = (lignes: LigneDocument[]) => {
   };
 };
 
-// Legacy function for backward compatibility
+// STANDARDIZED function for all document types
 export const calculateTaxesByGroup = (
   lignes: LigneDocument[],
   taxGroups: any[] = [],
