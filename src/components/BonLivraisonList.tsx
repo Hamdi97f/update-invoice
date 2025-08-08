@@ -103,14 +103,19 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
             description: ligne.description,
             prixUnitaire: ligne.prixUnitaire,
             tva: ligne.tva,
+            fodecApplicable: Boolean(ligne.fodecApplicable),
+            tauxFodec: ligne.tauxFodec || 1,
             stock: ligne.stock,
             type: ligne.type
           },
           quantite: ligne.quantite,
-          prixUnitaire: ligne.prixUnitaire || ligne.produit?.prixUnitaire || 0,
+          prixUnitaire: ligne.prixUnitaire,
           remise: 0,
-          montantHT: (ligne.prixUnitaire || ligne.produit?.prixUnitaire || 0) * ligne.quantite,
-          montantTTC: (ligne.prixUnitaire || ligne.produit?.prixUnitaire || 0) * ligne.quantite * (1 + (ligne.tva || ligne.produit?.tva || 0) / 100)
+          montantHT: ligne.montantHT || (ligne.prixUnitaire * ligne.quantite),
+          montantFodec: ligne.montantFodec || 0,
+          baseTVA: ligne.baseTVA || 0,
+          montantTVA: ligne.montantTVA || 0,
+          montantTTC: ligne.montantTTC || (ligne.prixUnitaire * ligne.quantite * (1 + ligne.tva / 100))
         }));
         
         // Use stored totals or calculate if missing
@@ -300,7 +305,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
       
       // Load lignes from database
       const lignesResult = await query(`
-        SELECT lbl.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock
+        SELECT lbl.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.fodecApplicable, p.tauxFodec, p.stock, p.type
         FROM lignes_bon_livraison lbl
         JOIN produits p ON lbl.produitId = p.id
         WHERE lbl.bonLivraisonId = ?

@@ -216,17 +216,44 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       const newLignes = [...lignes];
       newLignes[existingLineIndex].quantite += 1;
       
-      // Calculate amounts for bon de livraison
+      // Recalculate amounts with proper FODEC logic
       const ligne = newLignes[existingLineIndex];
-      const montantHT = ligne.quantite * produit.prixUnitaire;
+      const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
       ligne.montantHT = montantHT;
-      ligne.montantTTC = calculateTTC(montantHT, produit.tva);
+      
+      // Calculate FODEC
+      const montantFodec = ligne.produit.fodecApplicable ? 
+        montantHT * ((ligne.produit.tauxFodec || 1) / 100) : 0;
+      ligne.montantFodec = montantFodec;
+      
+      // Calculate TVA base (HT + FODEC)
+      const baseTVA = montantHT + montantFodec;
+      ligne.baseTVA = baseTVA;
+      
+      // Calculate TVA
+      const montantTVA = baseTVA * (ligne.produit.tva / 100);
+      ligne.montantTVA = montantTVA;
+      
+      // Calculate TTC
+      ligne.montantTTC = montantHT + montantFodec + montantTVA;
       
       setLignes(newLignes);
     } else {
-      // For bon de livraison, include prices for display
+      // Calculate amounts with proper FODEC logic for new line
       const montantHT = produit.prixUnitaire;
-      const montantTTC = calculateTTC(montantHT, produit.tva);
+      
+      // Calculate FODEC
+      const montantFodec = produit.fodecApplicable ? 
+        montantHT * ((produit.tauxFodec || 1) / 100) : 0;
+      
+      // Calculate TVA base (HT + FODEC)
+      const baseTVA = montantHT + montantFodec;
+      
+      // Calculate TVA
+      const montantTVA = baseTVA * (produit.tva / 100);
+      
+      // Calculate TTC
+      const montantTTC = montantHT + montantFodec + montantTVA;
       
       const newLigne: LigneDocument = {
         id: uuidv4(),
@@ -234,8 +261,11 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: montantHT,
-        montantTTC: montantTTC
+        montantHT,
+        montantFodec,
+        baseTVA,
+        montantTVA,
+        montantTTC
       };
       setLignes([...lignes, newLigne]);
     }
@@ -261,13 +291,13 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       (ligne as any)[field] = value;
     }
 
-    // Recalculate amounts
+    // Recalculate amounts with proper FODEC logic
     const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
     ligne.montantHT = montantHT;
     
     // Calculate FODEC
     const montantFodec = ligne.produit.fodecApplicable ? 
-      montantHT * (ligne.produit.tauxFodec / 100) : 0;
+      montantHT * ((ligne.produit.tauxFodec || 1) / 100) : 0;
     ligne.montantFodec = montantFodec;
     
     // Calculate TVA base (HT + FODEC)
@@ -391,8 +421,8 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       // Save bon de livraison to database
       await query(
         `INSERT OR REPLACE INTO bons_livraison 
-         (id, numero, date, clientId, statut, factureId, notes, totalHT, totalTVA, totalTTC)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, clientId, statut, factureId, notes, totalHT, totalFodec, totalTVA, totalTTC)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bonLivraisonData.id,
           bonLivraisonData.numero,
@@ -402,6 +432,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
           bonLivraisonData.factureId || null,
           bonLivraisonData.notes || '',
           bonLivraisonData.totalHT,
+          bonLivraisonData.totalFodec || 0,
           bonLivraisonData.totalTaxes || 0,
           bonLivraisonData.totalTTC
         ]
@@ -414,13 +445,20 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       for (const ligne of lignes) {
         await query(
           `INSERT INTO lignes_bon_livraison 
-           (id, bonLivraisonId, produitId, quantite)
-           VALUES (?, ?, ?, ?)`,
+           (id, bonLivraisonId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             bonLivraisonData.id,
             ligne.produit.id,
-            ligne.quantite
+            ligne.quantite,
+            ligne.prixUnitaire,
+            ligne.remise || 0,
+            ligne.montantHT,
+            ligne.montantFodec || 0,
+            ligne.baseTVA || 0,
+            ligne.montantTVA || 0,
+            ligne.montantTTC
           ]
         );
       }
