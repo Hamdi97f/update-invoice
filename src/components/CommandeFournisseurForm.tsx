@@ -226,21 +226,56 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       const newLignes = [...lignes];
       newLignes[existingLineIndex].quantite += 1;
       
+      // Recalculate amounts with proper FODEC logic
       const ligne = newLignes[existingLineIndex];
-      const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
+      const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
       ligne.montantHT = montantHT;
-      ligne.montantTTC = calculateTTC(montantHT, ligne.produit.tva);
+      
+      // Calculate FODEC
+      const montantFodec = ligne.produit.fodecApplicable ? 
+        montantHT * ((ligne.produit.tauxFodec || 1) / 100) : 0;
+      ligne.montantFodec = montantFodec;
+      
+      // Calculate TVA base (HT + FODEC)
+      const baseTVA = montantHT + montantFodec;
+      ligne.baseTVA = baseTVA;
+      
+      // Calculate TVA
+      const montantTVA = baseTVA * (ligne.produit.tva / 100);
+      ligne.montantTVA = montantTVA;
+      
+      // Calculate TTC
+      ligne.montantTTC = montantHT + montantFodec + montantTVA;
       
       setLignes(newLignes);
     } else {
+      // Calculate amounts with proper FODEC logic for new line
+      const montantHT = produit.prixUnitaire;
+      
+      // Calculate FODEC
+      const montantFodec = produit.fodecApplicable ? 
+        montantHT * ((produit.tauxFodec || 1) / 100) : 0;
+      
+      // Calculate TVA base (HT + FODEC)
+      const baseTVA = montantHT + montantFodec;
+      
+      // Calculate TVA
+      const montantTVA = baseTVA * (produit.tva / 100);
+      
+      // Calculate TTC
+      const montantTTC = montantHT + montantFodec + montantTVA;
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: produit.prixUnitaire,
-        montantTTC: calculateTTC(produit.prixUnitaire, produit.tva)
+        montantHT,
+        montantFodec,
+        baseTVA,
+        montantTVA,
+        montantTTC
       };
       setLignes([...lignes, newLigne]);
     }
@@ -266,12 +301,25 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       (ligne as any)[field] = value;
     }
 
-    // Recalculate amounts
-    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
+    // Recalculate amounts with proper FODEC logic
+    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
     ligne.montantHT = montantHT;
     
-    // Calculate TTC for this line based on product tax rate
-    ligne.montantTTC = montantHT * (1 + ligne.produit.tva / 100);
+    // Calculate FODEC
+    const montantFodec = ligne.produit.fodecApplicable ? 
+      montantHT * ((ligne.produit.tauxFodec || 1) / 100) : 0;
+    ligne.montantFodec = montantFodec;
+    
+    // Calculate TVA base (HT + FODEC)
+    const baseTVA = montantHT + montantFodec;
+    ligne.baseTVA = baseTVA;
+    
+    // Calculate TVA
+    const montantTVA = baseTVA * (ligne.produit.tva / 100);
+    ligne.montantTVA = montantTVA;
+    
+    // Calculate TTC
+    ligne.montantTTC = montantHT + montantFodec + montantTVA;
 
     setLignes(newLignes);
   };
@@ -281,13 +329,75 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   };
 
   const calculateTotals = () => {
+    // Calculate totals from product lines with FODEC
     const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    const totalFodec = lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
+    const totalTVA = lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
+    const totalTTC = lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
     
-    // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'commandesFournisseur');
-    const totalTTC = totalHT + totalTaxes;
+    // Create tax summary for display
+    const taxSummary = [];
     
-    return { totalHT, totalTaxes, taxGroupsSummary, totalTTC };
+    // Add FODEC summary if applicable
+    if (totalFodec > 0) {
+      const fodecGroups = new Map();
+      lignes.forEach(ligne => {
+        if (ligne.produit.fodecApplicable && ligne.montantFodec > 0) {
+          const rate = ligne.produit.tauxFodec;
+          if (!fodecGroups.has(rate)) {
+            fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+          }
+          const group = fodecGroups.get(rate);
+          group.baseAmount += ligne.montantHT;
+          group.taxAmount += ligne.montantFodec;
+        }
+      });
+      
+      fodecGroups.forEach((group, rate) => {
+        taxSummary.push({
+          type: 'FODEC',
+          rate,
+          groupName: `FODEC ${rate}%`,
+          baseAmount: group.baseAmount,
+          taxAmount: group.taxAmount
+        });
+      });
+    }
+    
+    // Add TVA summary if applicable
+    if (totalTVA > 0) {
+      const tvaGroups = new Map();
+      lignes.forEach(ligne => {
+        if (ligne.produit.tva > 0) {
+          const rate = ligne.produit.tva;
+          if (!tvaGroups.has(rate)) {
+            tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+          }
+          const group = tvaGroups.get(rate);
+          group.baseAmount += ligne.baseTVA || (ligne.montantHT + (ligne.montantFodec || 0));
+          group.taxAmount += ligne.montantTVA;
+        }
+      });
+      
+      tvaGroups.forEach((group, rate) => {
+        taxSummary.push({
+          type: 'TVA',
+          rate,
+          groupName: `TVA ${rate}%`,
+          baseAmount: group.baseAmount,
+          taxAmount: group.taxAmount
+        });
+      });
+    }
+    
+    return { 
+      totalHT, 
+      totalFodec,
+      totalTVA,
+      totalTaxes: totalFodec + totalTVA, 
+      taxGroupsSummary: taxSummary, 
+      totalTTC 
+    };
   };
 
   const handleSave = async () => {
@@ -322,8 +432,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       // Save commande to database
       await query(
         `INSERT OR REPLACE INTO commandes_fournisseur 
-         (id, numero, date, dateReception, fournisseurId, totalHT, totalTVA, totalTTC, statut, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, dateReception, fournisseurId, totalHT, totalFodec, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           commandeData.id,
           commandeData.numero,
@@ -331,6 +441,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
           commandeData.dateReception.toISOString(),
           commandeData.fournisseur.id,
           commandeData.totalHT,
+          commandeData.totalFodec,
           commandeData.totalTaxes,
           commandeData.totalTTC,
           commandeData.statut,
@@ -345,8 +456,8 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       for (const ligne of lignes) {
         await query(
           `INSERT INTO lignes_commande_fournisseur 
-           (id, commandeId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, commandeId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             commandeData.id,
@@ -355,6 +466,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
             ligne.prixUnitaire,
             ligne.remise || 0,
             ligne.montantHT,
+            ligne.montantFodec || 0,
+            ligne.baseTVA || 0,
+            ligne.montantTVA || 0,
             ligne.montantTTC
           ]
         );
@@ -416,7 +530,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     setEditingProduit(null);
   };
 
-  const { totalHT, totalTaxes, totalTTC } = calculateTotals();
+  const { totalHT, totalFodec, totalTVA, totalTaxes, totalTTC } = calculateTotals();
 
   if (!isOpen) return null;
 
@@ -696,6 +810,9 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                           Total HT
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          FODEC
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           TVA
                         </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -753,7 +870,11 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                             {formatCurrency(ligne.montantHT)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium">
-                            {formatCurrency(ligne.montantHT * ligne.produit.tva / 100)}
+                            {ligne.produit.fodecApplicable ? 
+                              formatCurrency(ligne.montantFodec || 0) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium">
+                            {formatCurrency(ligne.montantTVA || 0)}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-purple-600">
                             {formatCurrency(ligne.montantTTC)}
@@ -791,7 +912,22 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                       <span>{formatCurrency(totalHT)}</span>
                     </div>
                     
-                    {/* Tax groups summary */}
+                    {/* FODEC summary */}
+                    {totalFodec > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Total FODEC:</span>
+                        <span>{formatCurrency(totalFodec)}</span>
+                      </div>
+                    )}
+                    
+                    {/* TVA summary */}
+                    {totalTVA > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Total TVA:</span>
+                        <span>{formatCurrency(totalTVA)}</span>
+                      </div>
+                    )}
+                    
                     {taxGroupsSummary.length > 0 && (
                       <>
                         <div className="border-t pt-2">
@@ -809,10 +945,6 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                           ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium border-t pt-2">
-                          <span>Total taxes:</span>
-                          <span>{formatCurrency(totalTaxes)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
                           <span>{formatCurrency(totalTaxes)}</span>
                         </div>

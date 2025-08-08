@@ -80,7 +80,7 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
       // Load lines for each commande
       for (const commande of commandesData) {
         const lignesResult = await query(`
-          SELECT lcf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
+          SELECT lcf.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.fodecApplicable, p.tauxFodec, p.stock, p.type
           FROM lignes_commande_fournisseur lcf
           JOIN produits p ON lcf.produitId = p.id
           WHERE lcf.commandeId = ?
@@ -95,6 +95,8 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
             description: ligne.description,
             prixUnitaire: ligne.prixUnitaire,
             tva: ligne.tva,
+            fodecApplicable: Boolean(ligne.fodecApplicable),
+            tauxFodec: ligne.tauxFodec || 1,
             stock: ligne.stock,
             type: ligne.type
           },
@@ -102,11 +104,29 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
           prixUnitaire: ligne.prixUnitaire,
           remise: ligne.remise,
           montantHT: ligne.montantHT,
+          montantFodec: ligne.montantFodec || 0,
+          baseTVA: ligne.baseTVA || 0,
+          montantTVA: ligne.montantTVA || 0,
           montantTTC: ligne.montantTTC
         }));
         
         // Ensure tax data exists
-        commande.totalTaxes = commande.totalTVA || 0;
+        // Use stored totals or calculate if missing
+        if (!commande.totalHT) {
+          commande.totalHT = commande.lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+        }
+        if (!commande.totalFodec) {
+          commande.totalFodec = commande.lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
+        }
+        if (!commande.totalTVA) {
+          commande.totalTVA = commande.lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
+        }
+        if (!commande.totalTTC) {
+          commande.totalTTC = commande.lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
+        }
+        if (!commande.totalTaxes) {
+          commande.totalTaxes = (commande.totalFodec || 0) + (commande.totalTVA || 0);
+        }
         commande.taxGroupsSummary = [];
       }
       
