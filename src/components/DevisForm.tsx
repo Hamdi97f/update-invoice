@@ -203,8 +203,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       totalTTC: result.totalTTC 
     };
   };
-    setTaxGroupsSummary(taxGroupsSummary);
-  };
 
   // Filter clients based on search term
   const filteredClients = clients.filter(client =>
