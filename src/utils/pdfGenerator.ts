@@ -288,16 +288,16 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
     ]);
   }
   
-  // Optimized column widths for table (8 columns) - using percentage of available width
+  // OPTIMIZED: Better column widths for table (8 columns) - more space for amounts
   const columnStyles = {
-    0: { cellWidth: availableWidth * 0.10, halign: 'left' },    // Réf: 10%
-    1: { cellWidth: availableWidth * 0.35, halign: 'left' },    // Désignation: 35%
-    2: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Qté: 8%
-    3: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Prix U.: 12%
-    4: { cellWidth: availableWidth * 0.08, halign: 'center' },  // Remise: 8%
-    5: { cellWidth: availableWidth * 0.12, halign: 'right' },   // Total HT: 12%
-    6: { cellWidth: availableWidth * 0.07, halign: 'center' },  // TVA: 7%
-    7: { cellWidth: availableWidth * 0.08, halign: 'right' }    // Total TTC: 8%
+    0: { cellWidth: availableWidth * 0.08, halign: 'left' },    // Réf: 8% (reduced)
+    1: { cellWidth: availableWidth * 0.30, halign: 'left' },    // Désignation: 30% (reduced)
+    2: { cellWidth: availableWidth * 0.06, halign: 'center' },  // Qté: 6% (reduced)
+    3: { cellWidth: availableWidth * 0.14, halign: 'right' },   // Prix U.: 14% (increased)
+    4: { cellWidth: availableWidth * 0.07, halign: 'center' },  // Remise: 7% (reduced)
+    5: { cellWidth: availableWidth * 0.15, halign: 'right' },   // Total HT: 15% (increased)
+    6: { cellWidth: availableWidth * 0.06, halign: 'center' },  // TVA: 6% (reduced)
+    7: { cellWidth: availableWidth * 0.14, halign: 'right' }    // Total TTC: 14% (increased)
   };
   
   // Add a default empty row if no data
@@ -335,19 +335,19 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       fontStyle: 'bold',
       halign: 'center',
       valign: 'middle',
-      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 }, // Compact padding
+      cellPadding: { top: 1.5, right: 1, bottom: 1.5, left: 1 }, // More compact padding
       lineColor: hexToRgb('#d1d5db'),
       lineWidth: 0.2 // Very thin borders
     },
     
     bodyStyles: {
       fontSize: settings.table.fontSize,
-      cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 }, // Compact padding
+      cellPadding: { top: 1, right: 0.5, bottom: 1, left: 0.5 }, // Very compact padding
       valign: 'middle',
       lineColor: hexToRgb('#d1d5db'),
       lineWidth: 0.2, // Very thin borders
       textColor: hexToRgb(settings.colors.text),
-      minCellHeight: 6 // Minimum row height for compactness
+      minCellHeight: 5 // Smaller minimum row height
     },
     
     columnStyles,
@@ -362,10 +362,12 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
     styles: {
       lineColor: hexToRgb('#d1d5db'),
       lineWidth: 0.2, // Very thin borders
-      cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 }, // Compact padding
+      cellPadding: { top: 1, right: 0.5, bottom: 1, left: 0.5 }, // Very compact padding
       overflow: 'linebreak',
       cellWidth: 'auto',
-      fontSize: settings.table.fontSize
+      fontSize: settings.table.fontSize,
+      // CRITICAL: Prevent text wrapping for amount columns
+      whiteSpace: 'nowrap'
     },
     
     showHead: 'everyPage',
@@ -375,12 +377,21 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
     
     // Ensure table uses full width and is centered
     didParseCell: function (data) {
-      // Ensure text wrapping for long content
+      // Ensure text wrapping for long content in designation column only
       if (data.column.index === 1) { // Désignation column
         data.cell.styles.cellWidth = columnStyles[1].cellWidth;
         data.cell.styles.overflow = 'linebreak';
-        data.cell.styles.minCellHeight = 8; // Minimum height for text wrapping
+        data.cell.styles.minCellHeight = 6; // Reduced minimum height
+        data.cell.styles.whiteSpace = 'normal'; // Allow wrapping for designation
       }
+      
+      // CRITICAL: Prevent wrapping for amount columns (3, 5, 7)
+      if (data.column.index === 3 || data.column.index === 5 || data.column.index === 7) {
+        data.cell.styles.overflow = 'hidden';
+        data.cell.styles.whiteSpace = 'nowrap';
+        data.cell.styles.fontSize = Math.max(6, settings.table.fontSize - 1); // Slightly smaller font for amounts
+      }
+      
       // Ensure all columns respect their assigned widths
       if (columnStyles[data.column.index]) {
         data.cell.styles.cellWidth = columnStyles[data.column.index].cellWidth;
