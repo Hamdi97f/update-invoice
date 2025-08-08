@@ -88,7 +88,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
       // Load lines for each bon de livraison
       for (const bon of bonsData) {
         const lignesResult = await query(`
-          SELECT lbl.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
+          SELECT lbl.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.fodecApplicable, p.tauxFodec, p.stock, p.type
           FROM lignes_bon_livraison lbl
           JOIN produits p ON lbl.produitId = p.id
           WHERE lbl.bonLivraisonId = ?
@@ -122,11 +122,17 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
         if (!bon.totalHT) {
           bon.totalHT = bon.lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
         }
+        if (!bon.totalFodec) {
+          bon.totalFodec = bon.lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0);
+        }
+        if (!bon.totalTVA) {
+          bon.totalTVA = bon.lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0);
+        }
         if (!bon.totalTTC) {
           bon.totalTTC = bon.lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0);
         }
         if (!bon.totalTaxes) {
-          bon.totalTaxes = bon.totalTTC - bon.totalHT;
+          bon.totalTaxes = (bon.totalFodec || 0) + (bon.totalTVA || 0);
         }
       }
       
@@ -320,13 +326,18 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
           description: ligne.description,
           prixUnitaire: ligne.prixUnitaire,
           tva: ligne.tva,
+          fodecApplicable: Boolean(ligne.fodecApplicable),
+          tauxFodec: ligne.tauxFodec || 1,
           stock: ligne.stock
         },
         quantite: ligne.quantite,
         prixUnitaire: ligne.prixUnitaire,
         remise: 0,
-        montantHT: ligne.quantite * ligne.prixUnitaire,
-        montantTTC: ligne.quantite * ligne.prixUnitaire * (1 + ligne.tva / 100)
+        montantHT: ligne.montantHT || (ligne.quantite * ligne.prixUnitaire),
+        montantFodec: ligne.montantFodec || 0,
+        baseTVA: ligne.baseTVA || 0,
+        montantTVA: ligne.montantTVA || 0,
+        montantTTC: ligne.montantTTC || (ligne.quantite * ligne.prixUnitaire * (1 + ligne.tva / 100))
       }));
       
       allLignes.push(...bonLignes);

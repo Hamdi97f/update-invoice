@@ -422,8 +422,8 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
         }
         const fodecGroup = taxGroups.get(fodecKey);
         fodecGroup.baseAmount += ligne.montantHT;
-        // Calculate FODEC amount properly
-        const fodecAmount = ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100);
+        // Calculate FODEC amount properly - CRITICAL FIX for bon de livraison
+        const fodecAmount = ligne.montantFodec || (ligne.montantHT * (ligne.produit.tauxFodec || 1) / 100);
         fodecGroup.taxAmount += fodecAmount;
       }
       
@@ -440,7 +440,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
         }
         const tvaGroup = taxGroups.get(tvaKey);
         // Calculate base TVA for this specific line
-        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100)) : 0;
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantFodec || (ligne.montantHT * (ligne.produit.tauxFodec || 1) / 100)) : 0;
         const lineBaseTVA = ligne.montantHT + lineFodec;
         const lineTVA = ligne.montantTVA || (lineBaseTVA * (ligne.produit.tva / 100));
         
