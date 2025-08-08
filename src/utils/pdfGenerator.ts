@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { Facture, Devis, BonLivraison, CommandeFournisseur } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { formatCurrency } from './currency';
+import { formatCurrency, getCurrencySettingsFromDB, formatCurrencyWithSettings } from './currency';
 import { getCompanyInfo } from './numberGenerator';
 import { numberToWords } from './numberToWords';
 import { getCurrencySymbol, getCurrencyDecimals } from './currency';
@@ -246,9 +246,12 @@ const renderClientSection = (doc: jsPDF, settings: any, documentData: any, start
 };
 
 // Enhanced table with optimized width distribution and centering
-const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, startY: number) => {
+const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, startY: number, formatCurrencyForPDF?: (amount: number) => string) => {
   const pageWidth = doc.internal.pageSize.getWidth();
   const availableWidth = pageWidth - settings.margins.left - settings.margins.right;
+  
+  // Use the provided currency formatter or fallback to default
+  const currencyFormatter = formatCurrencyForPDF || formatCurrency;
   
   // Table format without FODEC column (FODEC is included in calculations but not displayed)
   const tableHeaders = ['Réf', 'Désignation', 'Qté', 'Prix U.', 'Remise', 'Total HT', 'TVA', 'Total TTC'];
@@ -268,11 +271,11 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       ligne.produit.ref || '-',
       ligne.produit.nom,
       ligne.quantite.toString(),
-      formatCurrency(ligne.produit.prixUnitaire),
+      currencyFormatter(ligne.produit.prixUnitaire),
       '0%',
-      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite),
+      currencyFormatter(ligne.produit.prixUnitaire * ligne.quantite),
       `${ligne.produit.tva}%`,
-      formatCurrency(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
+      currencyFormatter(ligne.produit.prixUnitaire * ligne.quantite * (1 + ligne.produit.tva / 100))
     ]);
   } else {
     // For other document types without FODEC column
@@ -280,11 +283,11 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
       ligne.produit.ref || '-',
       ligne.produit.nom,
       ligne.quantite.toString(),
-      formatCurrency(ligne.prixUnitaire),
+      currencyFormatter(ligne.prixUnitaire),
       `${ligne.remise || 0}%`,
-      formatCurrency(ligne.montantHT),
+      currencyFormatter(ligne.montantHT),
       `${ligne.produit.tva}%`,
-      formatCurrency(ligne.montantTTC)
+      currencyFormatter(ligne.montantTTC)
     ]);
   }
   
@@ -302,7 +305,7 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
   
   // Add a default empty row if no data
   if (!tableData || tableData.length === 0) {
-    tableData = [['-', 'Aucun produit', '0', '0.000 TND', '0%', '0.000 TND', '0%', '0.000 TND']];
+    tableData = [['-', 'Aucun produit', '0', currencyFormatter(0), '0%', currencyFormatter(0), '0%', currencyFormatter(0)]];
   }
   
   // Table theme based on settings
@@ -404,10 +407,13 @@ const renderEnhancedTable = (doc: jsPDF, settings: any, documentData: any, start
 };
 
 // Enhanced totals section
-const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentData: any, startY: number) => {
+const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentData: any, startY: number, formatCurrencyForPDF?: (amount: number) => string) => {
   const pageWidth = doc.internal.pageSize.getWidth();
   // CRITICAL: Use minimal spacing after table - start immediately after table
   let currentY = startY + 5; // Reduced from settings.spacing.section to just 5mm
+  
+  // Use the provided currency formatter or fallback to default
+  const currencyFormatter = formatCurrencyForPDF || formatCurrency;
   
   // Calculate taxes correctly from lignes AND include settings taxes
   const calculatedTaxes = [];
@@ -450,9 +456,9 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const tvaGroup = taxGroups.get(tvaKey);
-        // Calculate base TVA for this specific line
+          tax.isFixed ? '-' : currencyFormatter(tax.base),
         const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantFodec || (ligne.montantHT * (ligne.produit.tauxFodec || 1) / 100)) : 0;
-        const lineBaseTVA = ligne.montantHT + lineFodec;
+          currencyFormatter(tax.montant)
         const lineTVA = ligne.montantTVA || (lineBaseTVA * (ligne.produit.tva / 100));
         
         tvaGroup.baseAmount += lineBaseTVA;
@@ -594,7 +600,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   
   // Total HT
   doc.text(`Total HT:`, rightX - 50, currentY);
-  doc.text(formatCurrency(documentData.totalHT), rightX, currentY, { align: 'right' });
+  doc.text(currencyFormatter(documentData.totalHT), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
   // Individual tax lines (same as in tax detail table)
@@ -602,7 +608,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...hexToRgb(settings.fonts.body.color));
     doc.text(`${tax.nom}:`, rightX - 50, currentY);
-    doc.text(formatCurrency(tax.montant), rightX, currentY, { align: 'right' });
+    doc.text(currencyFormatter(tax.montant), rightX, currentY, { align: 'right' });
     currentY += settings.spacing.line;
   });
   
@@ -616,7 +622,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
   const correctTotalTTC = documentData.totalHT + totalCalculatedTaxes;
   
   doc.text(`Total TTC:`, rightX - 50, currentY);
-  doc.text(formatCurrency(correctTotalTTC), rightX, currentY, { align: 'right' });
+  doc.text(currencyFormatter(correctTotalTTC), rightX, currentY, { align: 'right' });
   currentY += settings.spacing.line;
   
   // Amount in words (if enabled) - MOVED HERE AFTER ALL TAXES
@@ -777,6 +783,9 @@ const generateEnhancedDocument = async (documentData: any, documentTitle: string
     const settings = await getTemplateSettings(isElectron, query);
     const logoUrl = await getTemplateLogo(isElectron, query);
     
+    // Load currency settings for proper formatting
+    const currencySettings = await getCurrencySettingsFromDB(isElectron, query);
+    
     // Get company info
     const companyInfo = await getCompanyInfo(isElectron, query);
     
@@ -786,12 +795,15 @@ const generateEnhancedDocument = async (documentData: any, documentTitle: string
       documentData.lignes = [];
     }
     
+    // Create a format function that uses the loaded currency settings
+    const formatCurrencyForPDF = (amount: number) => formatCurrencyWithSettings(amount, currencySettings);
+    
     // Render document sections with enhanced styling
     let currentY = renderEnhancedHeader(doc, settings, companyInfo, logoUrl);
     currentY = renderEnhancedTitle(doc, settings, documentTitle, documentData, currentY);
     currentY = renderClientSection(doc, settings, documentData, currentY);
-    currentY = renderEnhancedTable(doc, settings, documentData, currentY);
-    currentY = await renderEnhancedTotalsSection(doc, settings, documentData, currentY);
+    currentY = renderEnhancedTable(doc, settings, documentData, currentY, formatCurrencyForPDF);
+    currentY = await renderEnhancedTotalsSection(doc, settings, documentData, currentY, formatCurrencyForPDF);
     renderEnhancedFooter(doc, settings, documentData.notes);
     
     return doc;

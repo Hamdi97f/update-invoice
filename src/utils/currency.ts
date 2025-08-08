@@ -12,7 +12,7 @@ const defaultCurrencySettings: CurrencySettings = {
   position: 'after'
 };
 
-// Get currency settings from localStorage or database
+// Get currency settings from localStorage or database (synchronous)
 const getCurrencySettings = (): CurrencySettings => {
   try {
     if (typeof window !== 'undefined') {
@@ -27,8 +27,24 @@ const getCurrencySettings = (): CurrencySettings => {
   return defaultCurrencySettings;
 };
 
-export const formatCurrency = (amount: number): string => {
-  const settings = getCurrencySettings();
+// Get currency settings from database (asynchronous for PDF generation)
+export const getCurrencySettingsFromDB = async (isElectron: boolean, query?: any): Promise<CurrencySettings> => {
+  try {
+    if (isElectron && query) {
+      const result = await query('SELECT value FROM settings WHERE key = ?', ['currencySettings']);
+      if (result.length > 0) {
+        const dbSettings = JSON.parse(result[0].value);
+        return { ...defaultCurrencySettings, ...dbSettings };
+      }
+    }
+  } catch (error) {
+    console.error('Error loading currency settings from database:', error);
+  }
+  return getCurrencySettings(); // Fallback to localStorage
+};
+
+// Format currency with database settings (for PDF generation)
+export const formatCurrencyWithSettings = (amount: number, settings: CurrencySettings): string => {
   const formattedAmount = amount.toFixed(settings.decimals);
   
   // If no symbol is set, return just the formatted amount
@@ -41,6 +57,11 @@ export const formatCurrency = (amount: number): string => {
   } else {
     return `${formattedAmount} ${settings.symbol}`;
   }
+};
+
+export const formatCurrency = (amount: number): string => {
+  const settings = getCurrencySettings();
+  return formatCurrencyWithSettings(amount, settings);
 };
 
 export const setCurrencySettings = (settings: Partial<CurrencySettings>): void => {
