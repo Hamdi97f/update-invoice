@@ -269,44 +269,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     };
   };
 
-  const calculateProductTaxes = (ligne: LigneDocument): LigneDocument => {
-    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
-    
-    // Calculate FODEC
-    const montantFodec = ligne.produit.fodecApplicable ? 
-      montantHT * (ligne.produit.tauxFodec / 100) : 0;
-    
-    // Calculate TVA base (HT + FODEC)
-    const baseTVA = montantHT + montantFodec;
-    const montantTVA = baseTVA * (ligne.produit.tva / 100);
-    
-    // Calculate TTC
-    const montantTTC = montantHT + montantFodec + montantTVA;
-    
-    return {
-      ...ligne,
-      montantHT,
-      montantFodec,
-      baseTVA,
-      montantTVA,
-      montantTTC
-    };
-  };
-
-  const calculateTotals = () => {
-    // Use standardized calculation for all document types
-    const result = calculateDocumentTotals(lignes);
-    
-    return { 
-      totalHT: result.totalHT, 
-      totalFodec: result.totalFodec,
-      totalTVA: result.totalTVA,
-      totalTaxes: result.totalFodec + result.totalTVA,
-      taxSummary: result.taxSummary, 
-      totalTTC: result.totalTTC 
-    };
-  };
-
   // Filter clients based on search term
   const filteredClients = clients.filter(client =>
     client.nom.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
@@ -347,28 +309,52 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       const montantHT = ligne.quantite * ligne.prixUnitaire;
       ligne.montantHT = montantHT;
       
-      // Use standardized tax calculation
-      const updatedLigne = calculateProductTaxes(ligne);
-      newLignes[existingLineIndex] = updatedLigne;
+      // Calculate FODEC
+      const montantFodec = ligne.produit.fodecApplicable ? 
+        montantHT * (ligne.produit.tauxFodec / 100) : 0;
+      ligne.montantFodec = montantFodec;
+      
+      // Calculate TVA base (HT + FODEC)
+      const baseTVA = montantHT + montantFodec;
+      ligne.baseTVA = baseTVA;
+      
+      // Calculate TVA
+      const montantTVA = baseTVA * (ligne.produit.tva / 100);
+      ligne.montantTVA = montantTVA;
+      
+      // Calculate TTC
+      ligne.montantTTC = montantHT + montantFodec + montantTVA;
       
       setLignes(newLignes);
     } else {
+      const montantHT = produit.prixUnitaire;
+      
+      // Calculate FODEC
+      const montantFodec = produit.fodecApplicable ? 
+        montantHT * (produit.tauxFodec / 100) : 0;
+      
+      // Calculate TVA base (HT + FODEC)
+      const baseTVA = montantHT + montantFodec;
+      
+      // Calculate TVA
+      const montantTVA = baseTVA * (produit.tva / 100);
+      
+      // Calculate TTC
+      const montantTTC = montantHT + montantFodec + montantTVA;
+      
       const newLigne: LigneDocument = {
         id: uuidv4(),
         produit,
         quantite: 1,
         prixUnitaire: produit.prixUnitaire,
         remise: 0,
-        montantHT: produit.prixUnitaire,
-        montantFodec: 0,
-        baseTVA: 0,
-        montantTVA: 0,
-        montantTTC: 0
+        montantHT,
+        montantFodec,
+        baseTVA,
+        montantTVA,
+        montantTTC
       };
-      
-      // Use standardized tax calculation
-      const calculatedLigne = calculateProductTaxes(newLigne);
-      setLignes([...lignes, calculatedLigne]);
+      setLignes([...lignes, newLigne]);
       
       // Ensure tax group exists for this product
       ensureTaxGroupForProduct(produit.tva, query);
@@ -394,15 +380,45 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       (ligne as any)[field] = value;
     }
 
-    // Use standardized tax calculation
-    const updatedLigne = calculateProductTaxes(ligne);
-    newLignes[index] = updatedLigne;
+    // Recalculate amounts
+    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - ligne.remise / 100);
+    ligne.montantHT = montantHT;
+    
+    // Calculate FODEC
+    const montantFodec = ligne.produit.fodecApplicable ? 
+      montantHT * (ligne.produit.tauxFodec / 100) : 0;
+    ligne.montantFodec = montantFodec;
+    
+    // Calculate TVA base (HT + FODEC)
+    const baseTVA = montantHT + montantFodec;
+    ligne.baseTVA = baseTVA;
+    
+    // Calculate TVA
+    const montantTVA = baseTVA * (ligne.produit.tva / 100);
+    ligne.montantTVA = montantTVA;
+    
+    // Calculate TTC
+    ligne.montantTTC = montantHT + montantFodec + montantTVA;
 
     setLignes(newLignes);
   };
 
   const handleRemoveLigne = (index: number) => {
     setLignes(lignes.filter((_, i) => i !== index));
+  };
+
+  const calculateTotals = () => {
+    // Use standardized calculation for all document types
+    const result = calculateDocumentTotals(lignes);
+    
+    return { 
+      totalHT: result.totalHT, 
+      totalFodec: result.totalFodec,
+      totalTVA: result.totalTVA,
+      totalTaxes: result.totalFodec + result.totalTVA,
+      taxSummary: result.taxSummary, 
+      totalTTC: result.totalTTC 
+    };
   };
 
   const handleSave = async () => {
