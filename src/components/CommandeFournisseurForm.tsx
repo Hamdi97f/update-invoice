@@ -870,18 +870,14 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
                             <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
-                          {totalFodec > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">FODEC:</span>
-                              <span>{formatCurrency(totalFodec)}</span>
+                          {taxSummary.map((group, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span className="text-gray-600">
+                                {group.type} {group.rate}%:
+                              </span>
+                              <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
-                          )}
-                          {totalTVA > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">TVA:</span>
-                              <span>{formatCurrency(totalTVA)}</span>
-                            </div>
-                          )}
+                          ))}
                         </div>
                         <div className="flex justify-between text-sm font-medium border-t pt-2">
                           <span>Total taxes:</span>
