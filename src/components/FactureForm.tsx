@@ -384,17 +384,16 @@ const FactureForm: React.FC<FactureFormProps> = ({
   };
 
   const calculateTotals = () => {
-    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
-    
-    // Calculate taxes by group
-    const { taxGroupsSummary, totalTaxes } = calculateTaxesByGroup(lignes, taxGroups, 'factures');
-    const totalTTC = totalHT + totalTaxes;
+    // Use standardized calculation for all document types
+    const result = calculateDocumentTotals(lignes);
     
     return { 
-      totalHT, 
-      totalTaxes,
-      taxGroupsSummary,
-      totalTTC 
+      totalHT: result.totalHT, 
+      totalFodec: result.totalFodec,
+      totalTVA: result.totalTVA,
+      totalTaxes: result.totalFodec + result.totalTVA,
+      taxSummary: result.taxSummary, 
+      totalTTC: result.totalTTC 
     };
   };
 
@@ -410,7 +409,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       // Increment document number only when actually saving
       const finalNumero = await getNextDocumentNumber('factures', isElectron, query, true);
       
-      const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
+      const { totalHT, totalFodec, totalTVA, totalTaxes, taxSummary, totalTTC } = calculateTotals();
 
       const factureData: Facture = {
         id: facture?.id || uuidv4(),
@@ -420,8 +419,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
         client: selectedClient,
         lignes,
         totalHT,
-        taxGroupsSummary,
-        totalTaxes,
+        totalFodec,
+        totalTVA,
         totalTTC,
         statut: formData.statut,
         notes: formData.notes
@@ -430,8 +429,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
       // Save facture to database
       await query(
         `INSERT OR REPLACE INTO factures 
-         (id, numero, date, dateEcheance, clientId, totalHT, totalTVA, totalTTC, statut, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, numero, date, dateEcheance, clientId, totalHT, totalFodec, totalTVA, totalTTC, statut, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           factureData.id,
           factureData.numero,
@@ -439,7 +438,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
           factureData.dateEcheance.toISOString(),
           factureData.client.id,
           factureData.totalHT,
-          factureData.totalTaxes,
+          factureData.totalFodec,
+          factureData.totalTVA,
           factureData.totalTTC,
           factureData.statut,
           factureData.notes || ''
@@ -453,8 +453,8 @@ const FactureForm: React.FC<FactureFormProps> = ({
       for (const ligne of lignes) {
         await query(
           `INSERT INTO lignes_facture 
-           (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, factureId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             factureData.id,
@@ -463,6 +463,9 @@ const FactureForm: React.FC<FactureFormProps> = ({
             ligne.prixUnitaire,
             ligne.remise || 0,
             ligne.montantHT,
+            ligne.montantFodec || 0,
+            ligne.baseTVA || 0,
+            ligne.montantTVA || 0,
             ligne.montantTTC
           ]
         );
@@ -921,14 +924,14 @@ const FactureForm: React.FC<FactureFormProps> = ({
                     </div>
                     
                     {/* Tax groups summary */}
-                    {taxGroupsSummary.length > 0 && (
+                    {taxSummary.length > 0 && (
                       <>
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
                             <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
-                          {taxGroupsSummary.map((group, index) => (
+                          {taxSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">
                                 {group.type} {group.rate}%:

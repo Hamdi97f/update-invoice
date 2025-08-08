@@ -472,7 +472,7 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
     });
   }
   
-  // 2. Add taxes from settings (like Timbre fiscal) - FOR ALL DOCUMENT TYPES
+  // 2. Add taxes from settings (like Timbre fiscal) - ONLY FOR INVOICES
   try {
     if (isElectron && window.electronAPI) {
       const query = window.electronAPI.dbQuery;
@@ -488,11 +488,16 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
         ORDER BY ordre ASC
       `);
       
-      // Add settings taxes (like Timbre fiscal)
+      // Add settings taxes (like Timbre fiscal) - ONLY FOR INVOICES
       if (settingsTaxes && settingsTaxes.length > 0) {
         for (const tax of settingsTaxes) {
           // Skip if it's a TVA tax (already calculated from products)
           if (tax.nom.toLowerCase().includes('tva')) continue;
+          
+          // CRITICAL: Only add Timbre fiscal for invoices
+          if (tax.nom.toLowerCase().includes('timbre') && documentData.type !== 'facture') {
+            continue;
+          }
           
           const taxKey = `SETTINGS_${tax.nom}`;
           if (!taxGroups.has(taxKey)) {
