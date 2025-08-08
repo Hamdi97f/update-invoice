@@ -3,10 +3,10 @@ import autoTable from 'jspdf-autotable';
 import { Facture, Devis, BonLivraison, CommandeFournisseur } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { formatCurrency, getCurrencySymbol, getCurrencyDecimals } from './currency';
-import { getCurrencySettingsFromDB, formatCurrencyWithSettings } from './currency';
+import { formatCurrency, getCurrencySettingsFromDB, formatCurrencyWithSettings } from './currency';
 import { getCompanyInfo } from './numberGenerator';
 import { numberToWords } from './numberToWords';
+import { getCurrencySymbol, getCurrencyDecimals } from './currency';
 import { calculateTaxesByGroup, loadTaxGroups } from './productTaxCalculator';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
@@ -456,7 +456,9 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
           });
         }
         const tvaGroup = taxGroups.get(tvaKey);
+          tax.isFixed ? '-' : currencyFormatter(tax.base),
         const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantFodec || (ligne.montantHT * (ligne.produit.tauxFodec || 1) / 100)) : 0;
+          currencyFormatter(tax.montant)
         const lineTVA = ligne.montantTVA || (lineBaseTVA * (ligne.produit.tva / 100));
         
         tvaGroup.baseAmount += lineBaseTVA;
