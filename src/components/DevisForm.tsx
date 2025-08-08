@@ -190,6 +190,109 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     setTaxGroupsSummary(result.taxSummary);
   };
 
+  const calculateDocumentTotals = (lignes: LigneDocument[]) => {
+    // Calculate totals from product lines with proper FODEC and TVA
+    const totalHT = lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0);
+    
+    // Calculate FODEC totals
+    let totalFodec = 0;
+    const fodecGroups = new Map();
+    lignes.forEach(ligne => {
+      if (ligne.produit.fodecApplicable && ligne.produit.tauxFodec > 0) {
+        const lineFodec = ligne.montantHT * (ligne.produit.tauxFodec / 100);
+        totalFodec += lineFodec;
+        
+        const rate = ligne.produit.tauxFodec;
+        if (!fodecGroups.has(rate)) {
+          fodecGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+        }
+        const group = fodecGroups.get(rate);
+        group.baseAmount += ligne.montantHT;
+        group.taxAmount += lineFodec;
+      }
+    });
+    
+    // Calculate TVA totals (on HT + FODEC base)
+    let totalTVA = 0;
+    const tvaGroups = new Map();
+    lignes.forEach(ligne => {
+      if (ligne.produit.tva > 0) {
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
+        const lineBaseTVA = ligne.montantHT + lineFodec;
+        const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
+        totalTVA += lineTVA;
+        
+        const rate = ligne.produit.tva;
+        if (!tvaGroups.has(rate)) {
+          tvaGroups.set(rate, { baseAmount: 0, taxAmount: 0 });
+        }
+        const group = tvaGroups.get(rate);
+        group.baseAmount += lineBaseTVA;
+        group.taxAmount += lineTVA;
+      }
+    });
+    
+    // Create tax summary for display
+    const taxSummary = [];
+    
+    // Add FODEC summary
+    fodecGroups.forEach((group, rate) => {
+      taxSummary.push({
+        type: 'FODEC',
+        rate,
+        baseAmount: group.baseAmount,
+        taxAmount: group.taxAmount,
+        groupName: `FODEC ${rate}%`
+      });
+    });
+    
+    // Add TVA summary
+    tvaGroups.forEach((group, rate) => {
+      taxSummary.push({
+        type: 'TVA',
+        rate,
+        baseAmount: group.baseAmount,
+        taxAmount: group.taxAmount,
+        groupName: `TVA ${rate}%`
+      });
+    });
+    
+    const totalTTC = totalHT + totalFodec + totalTVA;
+    
+    return { 
+      totalHT, 
+      totalFodec,
+      totalTVA,
+      totalTaxes: totalFodec + totalTVA,
+      taxSummary, 
+      totalTTC 
+    };
+  };
+
+  const calculateProductTaxes = (ligne: LigneDocument): LigneDocument => {
+    const montantHT = ligne.quantite * ligne.prixUnitaire * (1 - (ligne.remise || 0) / 100);
+    
+    // Calculate FODEC
+    const montantFodec = ligne.produit.fodecApplicable ? 
+      montantHT * (ligne.produit.tauxFodec / 100) : 0;
+    
+    // Calculate TVA base (HT + FODEC)
+    const baseTVA = montantHT + montantFodec;
+    const montantTVA = baseTVA * (ligne.produit.tva / 100);
+    
+    // Calculate TTC
+    const montantTTC = montantHT + montantFodec + montantTVA;
+    
+    return {
+      ...ligne,
+      montantHT,
+      montantFodec,
+      baseTVA,
+      montantTVA,
+      montantTTC
+    };
+  };
+
   const calculateTotals = () => {
     // Use standardized calculation for all document types
     const result = calculateDocumentTotals(lignes);
@@ -302,7 +405,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
-
   const handleSave = async () => {
     if (!isReady) return;
     
@@ -315,7 +417,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       // Increment document number only when actually saving
       const finalNumero = await getNextDocumentNumber('devis', isElectron, query, true);
       
-      const { totalHT, totalTaxes, taxGroupsSummary, totalTTC } = calculateTotals();
+      const { totalHT, totalTaxes, taxSummary, totalTTC } = calculateTotals();
 
       const devisData: Devis = {
         id: devis?.id || uuidv4(),
@@ -325,7 +427,7 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
         client: selectedClient,
         lignes,
         totalHT,
-        taxGroupsSummary,
+        taxGroupsSummary: taxSummary,
         totalTaxes,
         totalTTC,
         statut: formData.statut,
