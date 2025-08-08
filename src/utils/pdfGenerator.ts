@@ -615,7 +615,17 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
     doc.setTextColor(...hexToRgb(settings.amountInWords.color));
     doc.setFont('helvetica', 'bold');
     
-    const amountText = `Arrêté la présente ${documentData.type === 'facture' ? 'facture' : 'document'} à la somme de : ${amountInWords}`;
+    const getDocumentName = (type: string) => {
+      switch (type) {
+        case 'facture': return 'facture';
+        case 'devis': return 'devis';
+        case 'commande': return 'commande fournisseur';
+        case 'bonLivraison': return 'bon de livraison';
+        default: return 'document';
+      }
+    };
+    
+    const amountText = `Arrêté la présente ${getDocumentName(documentData.type)} à la somme de : ${amountInWords}`;
     const maxWidth = pageWidth - settings.margins.left - settings.margins.right - 90;
     
     let amountX = settings.margins.left;
@@ -868,10 +878,16 @@ export const generateDevisPDF = async (devis: Devis) => {
       devis.lignes = [];
     }
     
-    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
+    // CRITICAL FIX: Use same logic as invoice - calculate taxes from lignes
     const documentData = {
       ...devis,
-      type: 'devis'
+      type: 'devis',
+      dateValidite: devis.dateValidite,
+      // Calculate totals using same logic as invoice
+      totalHT: devis.lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0),
+      totalFodec: devis.lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0),
+      totalTVA: devis.lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0),
+      totalTTC: devis.lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0)
     };
     
     return await generateEnhancedDocument(documentData, 'DEVIS');
@@ -889,10 +905,15 @@ export const generateBonLivraisonPDF = async (bonLivraison: BonLivraison) => {
       bonLivraison.lignes = [];
     }
     
-    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
+    // CRITICAL FIX: Use same logic as invoice - calculate taxes from lignes
     const documentData = {
       ...bonLivraison,
-      type: 'bonLivraison'
+      type: 'bonLivraison',
+      // Calculate totals using same logic as invoice
+      totalHT: bonLivraison.lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0),
+      totalFodec: bonLivraison.lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0),
+      totalTVA: bonLivraison.lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0),
+      totalTTC: bonLivraison.lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0)
     };
     
     return await generateEnhancedDocument(documentData, 'BON DE LIVRAISON');
@@ -910,10 +931,16 @@ export const generateCommandeFournisseurPDF = async (commande: CommandeFournisse
       commande.lignes = [];
     }
     
-    // CRITICAL FIX: Don't prepare taxes array - let the PDF generator calculate from lignes
+    // CRITICAL FIX: Use same logic as invoice - calculate taxes from lignes
     const documentData = {
       ...commande,
-      type: 'commande'
+      type: 'commande',
+      dateReception: commande.dateReception,
+      // Calculate totals using same logic as invoice
+      totalHT: commande.lignes.reduce((sum, ligne) => sum + ligne.montantHT, 0),
+      totalFodec: commande.lignes.reduce((sum, ligne) => sum + (ligne.montantFodec || 0), 0),
+      totalTVA: commande.lignes.reduce((sum, ligne) => sum + (ligne.montantTVA || 0), 0),
+      totalTTC: commande.lignes.reduce((sum, ligne) => sum + ligne.montantTTC, 0)
     };
     
     return await generateEnhancedDocument(documentData, 'COMMANDE FOURNISSEUR');
