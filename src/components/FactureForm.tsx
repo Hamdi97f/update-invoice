@@ -926,29 +926,22 @@ const FactureForm: React.FC<FactureFormProps> = ({
                         <div className="border-t pt-2">
                           <div className="flex items-center mb-2">
                             <Calculator className="w-4 h-4 mr-1 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-700">Taxes par groupe:</span>
+                            <span className="text-sm font-medium text-gray-700">Détail des taxes:</span>
                           </div>
                           {taxGroupsSummary.map((group, index) => (
                             <div key={index} className="flex justify-between text-sm">
                               <span className="text-gray-600">
-                                {group.groupName}:
+                                {group.type} {group.rate}%:
                               </span>
                               <span>{formatCurrency(group.taxAmount)}</span>
                             </div>
                           ))}
                         </div>
-                        <div className="flex justify-between text-sm font-medium border-t pt-2">
+                        <div className="flex justify-between text-sm font-medium">
                           <span>Total taxes:</span>
                           <span>{formatCurrency(totalTaxes)}</span>
                         </div>
                       </>
-                    )}
-                    
-                    {taxGroupsSummary.length > 0 && (
-                      <div className="flex justify-between text-sm font-medium border-t pt-2">
-                        <span>Total taxes:</span>
-                        <span>{formatCurrency(totalTaxes)}</span>
-                      </div>
                     )}
                     
                     <div className="flex justify-between font-bold text-lg border-t pt-2">
