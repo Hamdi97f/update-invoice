@@ -90,7 +90,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       // Load lines for each devis
       for (const d of devisData) {
         const lignesResult = await query(`
-          SELECT ld.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.stock, p.type
+          SELECT ld.*, p.ref, p.nom, p.description, p.prixUnitaire, p.tva, p.fodecApplicable, p.tauxFodec, p.stock, p.type
           FROM lignes_devis ld
           JOIN produits p ON ld.produitId = p.id
           WHERE ld.devisId = ?
@@ -105,6 +105,8 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
             description: ligne.description,
             prixUnitaire: ligne.prixUnitaire,
             tva: ligne.tva,
+            fodecApplicable: Boolean(ligne.fodecApplicable),
+            tauxFodec: ligne.tauxFodec || 1,
             stock: ligne.stock,
             type: ligne.type
           },
@@ -112,6 +114,9 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
           prixUnitaire: ligne.prixUnitaire,
           remise: ligne.remise,
           montantHT: ligne.montantHT,
+          montantFodec: ligne.montantFodec || 0,
+          baseTVA: ligne.baseTVA || 0,
+          montantTVA: ligne.montantTVA || 0,
           montantTTC: ligne.montantTTC
         }));
       }

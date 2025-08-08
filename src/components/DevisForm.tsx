@@ -460,8 +460,8 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
       for (const ligne of lignes) {
         await query(
           `INSERT INTO lignes_devis 
-           (id, devisId, produitId, quantite, prixUnitaire, remise, montantHT, montantFodec, baseTVA, montantTVA, montantTTC)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, devisId, produitId, quantite, prixUnitaire, remise, montantHT, montantTTC)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             ligne.id,
             devisData.id,
@@ -470,9 +470,6 @@ const DevisForm: React.FC<DevisFormProps> = ({ isOpen, onClose, onSave, devis })
             ligne.prixUnitaire,
             ligne.remise || 0,
             ligne.montantHT,
-            ligne.montantFodec || 0,
-            ligne.baseTVA || 0,
-            ligne.montantTVA || 0,
             ligne.montantTTC
           ]
         );

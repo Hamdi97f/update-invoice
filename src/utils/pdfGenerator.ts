@@ -422,7 +422,9 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
         }
         const fodecGroup = taxGroups.get(fodecKey);
         fodecGroup.baseAmount += ligne.montantHT;
-        fodecGroup.taxAmount += ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100);
+        // Calculate FODEC amount properly
+        const fodecAmount = ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100);
+        fodecGroup.taxAmount += fodecAmount;
       }
       
       // TVA calculation - SEPARATE BY RATE
@@ -438,9 +440,9 @@ const renderEnhancedTotalsSection = async (doc: jsPDF, settings: any, documentDa
         }
         const tvaGroup = taxGroups.get(tvaKey);
         // Calculate base TVA for this specific line
-        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantHT * ligne.produit.tauxFodec / 100) : 0;
+        const lineFodec = ligne.produit.fodecApplicable ? (ligne.montantFodec || (ligne.montantHT * ligne.produit.tauxFodec / 100)) : 0;
         const lineBaseTVA = ligne.montantHT + lineFodec;
-        const lineTVA = lineBaseTVA * (ligne.produit.tva / 100);
+        const lineTVA = ligne.montantTVA || (lineBaseTVA * (ligne.produit.tva / 100));
         
         tvaGroup.baseAmount += lineBaseTVA;
         tvaGroup.taxAmount += lineTVA;
