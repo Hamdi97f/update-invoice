@@ -3,10 +3,9 @@ import autoTable from 'jspdf-autotable';
 import { Facture, Devis, BonLivraison, CommandeFournisseur } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { formatCurrency, getCurrencySettingsFromDB, formatCurrencyWithSettings } from './currency';
+import { formatCurrency, getCurrencySettingsFromDB, formatCurrencyWithSettings, getCurrencySymbol, getCurrencyDecimals } from './currency';
 import { getCompanyInfo } from './numberGenerator';
 import { numberToWords } from './numberToWords';
-import { getCurrencySymbol, getCurrencyDecimals } from './currency';
 import { calculateTaxesByGroup, loadTaxGroups } from './productTaxCalculator';
 
 const formatDate = (date: Date) => format(date, 'dd/MM/yyyy', { locale: fr });
