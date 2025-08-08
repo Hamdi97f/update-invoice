@@ -828,6 +828,10 @@ export const generateCombinedFacturesPDF = async (factures: Facture[]) => {
     const logoUrl = await getTemplateLogo(isElectron, query);
     const companyInfo = await getCompanyInfo(isElectron, query);
     
+    // Load currency settings for proper formatting
+    const currencySettings = await getCurrencySettingsFromDB(isElectron, query);
+    const formatCurrencyForPDF = (amount: number) => formatCurrencyWithSettings(amount, currencySettings);
+    
     // Create the first invoice using the proper template
     const firstFactureData = { ...factures[0], type: 'facture' };
     
