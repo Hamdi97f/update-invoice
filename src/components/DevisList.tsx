@@ -62,7 +62,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
     try {
       setLoading(true);
       const result = await query(`
-        SELECT d.*, c.code as clientCode, c.nom as clientNom, c.adresse, c.codePostal, c.ville, c.telephone, c.email
+        SELECT d.*, c.code as clientCode, c.nom as clientNom, c.adresse, c.codePostal, c.ville, c.telephone, c.email, c.matriculeFiscal
         FROM devis d
         JOIN clients c ON d.clientId = c.id
         ORDER BY d.numero DESC
@@ -83,7 +83,8 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
           codePostal: d.codePostal,
           ville: d.ville,
           telephone: d.telephone,
-          email: d.email
+          email: d.email,
+          matriculeFiscal: d.matriculeFiscal
         }
       }));
       

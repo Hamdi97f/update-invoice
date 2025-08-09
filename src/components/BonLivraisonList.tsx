@@ -61,7 +61,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     try {
       setLoading(true);
       const result = await query(`
-        SELECT bl.*, c.code as clientCode, c.nom as clientNom, c.adresse, c.codePostal, c.ville, c.telephone, c.email
+        SELECT bl.*, c.code as clientCode, c.nom as clientNom, c.adresse, c.codePostal, c.ville, c.telephone, c.email, c.matriculeFiscal
         FROM bons_livraison bl
         JOIN clients c ON bl.clientId = c.id
         ORDER BY bl.numero DESC
@@ -81,7 +81,8 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
           codePostal: bl.codePostal,
           ville: bl.ville,
           telephone: bl.telephone,
-          email: bl.email
+          email: bl.email,
+          matriculeFiscal: bl.matriculeFiscal
         }
       }));
       
