@@ -2,6 +2,12 @@
 export const numberToWords = (amount: number, currency: string = 'TND'): string => {
   const dinars = Math.floor(amount);
   
+  // Ensure currency is 'TND' if not provided or empty, or if unrecognized
+  let effectiveCurrency = currency.trim().toUpperCase();
+  if (!effectiveCurrency || !['TND', 'EUR', 'USD', 'MAD', 'DZD', 'GBP', 'CHF', 'CAD'].includes(effectiveCurrency)) {
+    effectiveCurrency = 'TND'; // Default to TND if not specified or unrecognized
+  }
+  
   // Get decimal places from currency settings
   const getCurrencyDecimals = (): number => {
     try {
@@ -122,15 +128,15 @@ export const numberToWords = (amount: number, currency: string = 'TND'): string 
   let result = '';
   
   if (dinars === 0) {
-    result = `zéro ${getCurrencyName(currency, false)}`;
+    result = `zéro ${getCurrencyName(effectiveCurrency, false)}`;
   } else if (dinars === 1) {
-    result = `un ${getCurrencyName(currency, false)}`;
+    result = `un ${getCurrencyName(effectiveCurrency, false)}`;
   } else {
-    result = convertThousands(dinars).toLowerCase() + ` ${getCurrencyName(currency, true)}`;
+    result = convertThousands(dinars) + ` ${getCurrencyName(effectiveCurrency, true)}`;
   }
   
   if (fractionalPart > 0 && decimals > 0) {
-    const fractionalName = getFractionalName(currency, decimals);
+    const fractionalName = getFractionalName(effectiveCurrency, decimals);
     result += ' ET ' + fractionalPart.toString() + ` ${fractionalName}`;
   }
   
@@ -150,7 +156,7 @@ const getCurrencyName = (currency: string, plural: boolean): string => {
     'CAD': { singular: 'DOLLAR', plural: 'DOLLARS' }
   };
   
-  const names = currencyNames[currency.toUpperCase()];
+  const names = currencyNames[currency];
   if (names) {
     return plural ? names.plural : names.singular;
   }
@@ -172,5 +178,5 @@ const getFractionalName = (currency: string, decimals: number): string => {
     'CAD': 'CENTS'
   };
   
-  return fractionalNames[currency.toUpperCase()] || 'CENTIMES';
+  return fractionalNames[currency] || 'CENTIMES';
 };
