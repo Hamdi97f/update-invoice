@@ -122,11 +122,11 @@ export const numberToWords = (amount: number, currency: string = 'TND'): string 
   let result = '';
   
   if (dinars === 0) {
-    result = `ZÉRO ${getCurrencyName(currency, false)}`;
+    result = `zéro ${getCurrencyName(currency, false)}`;
   } else if (dinars === 1) {
-    result = `UN ${getCurrencyName(currency, false)}`;
+    result = `un ${getCurrencyName(currency, false)}`;
   } else {
-    result = convertThousands(dinars) + ` ${getCurrencyName(currency, true)}`;
+    result = convertThousands(dinars).toLowerCase() + ` ${getCurrencyName(currency, true)}`;
   }
   
   if (fractionalPart > 0 && decimals > 0) {
@@ -134,7 +134,7 @@ export const numberToWords = (amount: number, currency: string = 'TND'): string 
     result += ' ET ' + fractionalPart.toString() + ` ${fractionalName}`;
   }
   
-  return result;
+  return result.toLowerCase();
 };
 
 // Get currency name in singular or plural
@@ -143,7 +143,7 @@ const getCurrencyName = (currency: string, plural: boolean): string => {
     'TND': { singular: 'DINAR', plural: 'DINARS' },
     'EUR': { singular: 'EURO', plural: 'EUROS' },
     'USD': { singular: 'DOLLAR', plural: 'DOLLARS' },
-    'MAD': { singular: 'DIRHAM', plural: 'DIRHAMS' },
+    'MAD': { singular: 'DIRHAM', plural: 'DIRHAMS' }, // Added for completeness
     'DZD': { singular: 'DINAR', plural: 'DINARS' },
     'GBP': { singular: 'LIVRE', plural: 'LIVRES' },
     'CHF': { singular: 'FRANC', plural: 'FRANCS' },
@@ -162,7 +162,7 @@ const getCurrencyName = (currency: string, plural: boolean): string => {
 // Get fractional currency name
 const getFractionalName = (currency: string, decimals: number): string => {
   const fractionalNames: { [key: string]: string } = {
-    'TND': 'MILLIMES',
+    'TND': 'MILLIMES', // Corrected to MILLIMES
     'EUR': 'CENTIMES',
     'USD': 'CENTS',
     'MAD': 'CENTIMES',
