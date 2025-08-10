@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, Search, Building2 } from 'lucide-react';
 import { Fournisseur } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import FournisseurForm from './FournisseurForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 const FournisseursList: React.FC = () => {
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
@@ -11,6 +12,7 @@ const FournisseursList: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingFournisseur, setEditingFournisseur] = useState<Fournisseur | null>(null);
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -38,7 +40,7 @@ const FournisseursList: React.FC = () => {
       setFournisseurs(result);
     } catch (error) {
       console.error('Error loading fournisseurs:', error);
-      alert('Erreur lors du chargement des fournisseurs');
+      showNotification('Erreur lors du chargement des fournisseurs', 'error');
     } finally {
       setLoading(false);
     }
@@ -101,7 +103,7 @@ const FournisseursList: React.FC = () => {
         setFournisseurs(fournisseurs.filter(f => f.id !== id));
       } catch (error) {
         console.error('Error deleting fournisseur:', error);
-        alert('Erreur lors de la suppression du fournisseur');
+        showNotification('Erreur lors de la suppression du fournisseur', 'error');
       }
     }
   };

@@ -5,6 +5,7 @@ import { generateCommandeFournisseurPDF } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { useDatabase } from '../hooks/useDatabase';
 import CommandeFournisseurForm from './CommandeFournisseurForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface CommandeFournisseurListProps {
   onCreateNew: () => void;
@@ -29,6 +30,7 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
   const [pdfError, setPdfError] = useState<string | null>(null);
   
   const { query, savePDF, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -243,7 +245,7 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
     } catch (error: any) {
       console.error('Error generating PDF:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF');
-      alert('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 
@@ -256,7 +258,7 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
     } catch (error: any) {
       console.error('Error generating PDF for print:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF pour impression');
-      alert('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 
@@ -301,7 +303,7 @@ const CommandeFournisseurList: React.FC<CommandeFournisseurListProps> = ({ onCre
         setCommandes(commandes.filter(cf => cf.id !== id));
       } catch (error) {
         console.error('Error deleting commande fournisseur:', error);
-        alert('Erreur lors de la suppression de la commande fournisseur');
+        showNotification('Erreur lors de la suppression de la commande fournisseur', 'error');
       }
     }
   };
