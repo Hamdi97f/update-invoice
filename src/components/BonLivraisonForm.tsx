@@ -815,8 +815,12 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
                           <td className="px-4 py-3">
                             <input
                               type="number"
-                              value={ligne.quantite}
-                              onChange={(e) => handleLigneChange(index, 'quantite', parseInt(e.target.value) || 0)}
+                              value={ligne.quantite === null ? '' : ligne.quantite}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                const parsedValue = parseInt(value);
+                                handleLigneChange(index, 'quantite', isNaN(parsedValue) ? null : parsedValue);
+                              }}
                               className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-orange-500"
                               min="1"
                             />

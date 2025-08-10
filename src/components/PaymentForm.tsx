@@ -442,9 +442,13 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                 <div className="relative">
                   <Calculator className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
-                    type="number"
-                    value={formData.montant}
-                    onChange={(e) => handleChange('montant', parseFloat(e.target.value) || 0)}
+                    type="number" // Keep type as number for native validation
+                    value={formData.montant === null ? '' : formData.montant} // Display empty string for null
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const parsedValue = parseFloat(value);
+                      handleChange('montant', isNaN(parsedValue) ? null : parsedValue); // Store null if NaN
+                    }}
                     className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     step="0.001"
                     min="0"

@@ -841,8 +841,12 @@ const FactureForm: React.FC<FactureFormProps> = ({
                           <td className="px-4 py-3">
                             <input
                               type="number"
-                              value={ligne.quantite}
-                              onChange={(e) => handleLigneChange(index, 'quantite', parseInt(e.target.value) || 0)}
+                              value={ligne.quantite === null ? '' : ligne.quantite}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                const parsedValue = parseInt(value);
+                                handleLigneChange(index, 'quantite', isNaN(parsedValue) ? null : parsedValue);
+                              }}
                               className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
                               min={isAvoir ? undefined : "1"}
                               readOnly={isAvoir}
@@ -851,8 +855,12 @@ const FactureForm: React.FC<FactureFormProps> = ({
                           <td className="px-4 py-3">
                             <input
                               type="number"
-                              value={ligne.prixUnitaire}
-                              onChange={(e) => handleLigneChange(index, 'prixUnitaire', parseFloat(e.target.value) || 0)}
+                              value={ligne.prixUnitaire === null ? '' : ligne.prixUnitaire}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                const parsedValue = parseFloat(value);
+                                handleLigneChange(index, 'prixUnitaire', isNaN(parsedValue) ? null : parsedValue);
+                              }}
                               className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
                               step="0.001"
                               readOnly={isAvoir}
@@ -861,8 +869,12 @@ const FactureForm: React.FC<FactureFormProps> = ({
                           <td className="px-4 py-3">
                             <input
                               type="number"
-                              value={ligne.remise}
-                              onChange={(e) => handleLigneChange(index, 'remise', parseFloat(e.target.value) || 0)}
+                              value={ligne.remise === null ? '' : ligne.remise}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                const parsedValue = parseFloat(value);
+                                handleLigneChange(index, 'remise', isNaN(parsedValue) ? null : parsedValue);
+                              }}
                               className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
                               min="0"
                               max="100"

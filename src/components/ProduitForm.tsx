@@ -358,8 +358,12 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
               </label>
               <input
                 type="number"
-                value={formData.prixUnitaire}
-                onChange={(e) => handleChange('prixUnitaire', parseFloat(e.target.value) || 0)}
+                value={formData.prixUnitaire === null ? '' : formData.prixUnitaire}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const parsedValue = parseFloat(value);
+                  handleChange('prixUnitaire', isNaN(parsedValue) ? null : parsedValue);
+                }}
                 className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:border-transparent ${
                   error && formData.prixUnitaire <= 0 ? 'border-red-300 ring-1 ring-red-500' :
                   formData.type === 'vente' 
@@ -458,8 +462,12 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
               </label>
               <input
                 type="number"
-                value={formData.stock}
-                onChange={(e) => handleChange('stock', parseInt(e.target.value) || 0)}
+                value={formData.stock === null ? '' : formData.stock}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const parsedValue = parseInt(value);
+                  handleChange('stock', isNaN(parsedValue) ? null : parsedValue);
+                }}
                 className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:border-transparent ${
                   formData.type === 'vente' 
                     ? 'border-green-300 focus:ring-green-500' 
