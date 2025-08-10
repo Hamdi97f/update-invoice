@@ -8,6 +8,7 @@ import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import FournisseurForm from './FournisseurForm';
 import ProduitForm from './ProduitForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface CommandeFournisseurFormProps {
   isOpen: boolean;
@@ -49,6 +50,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
   const [newProductType, setNewProductType] = useState<'vente' | 'achat'>('achat');
 
   const { query, isElectron, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   const generateNumero = async () => {
     if (!isReady) return;
@@ -404,7 +406,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
     if (!isReady) return;
     
     if (!selectedFournisseur || lignes.length === 0) {
-      alert('Veuillez sélectionner un fournisseur et ajouter au moins une ligne');
+      showNotification('Veuillez sélectionner un fournisseur et ajouter au moins une ligne', 'warning');
       return;
     }
 
@@ -479,7 +481,7 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       
     } catch (error) {
       console.error('Error saving commande:', error);
-      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+      showNotification(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`, 'error');
     }
   };
 

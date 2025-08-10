@@ -6,6 +6,7 @@ import { formatCurrency } from '../utils/currency';
 import ProduitForm from './ProduitForm';
 import CSVImportDialog from './CSVImportDialog';
 import { ImportResult } from '../utils/csvImporter';
+import { useNotification } from '../contexts/NotificationContext';
 
 const ProduitsList: React.FC = () => {
   const [produits, setProduits] = useState<Produit[]>([]);
@@ -17,6 +18,7 @@ const ProduitsList: React.FC = () => {
   const [newProductType, setNewProductType] = useState<'vente' | 'achat'>('vente');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -44,7 +46,7 @@ const ProduitsList: React.FC = () => {
       setProduits(result);
     } catch (error) {
       console.error('Error loading produits:', error);
-      alert('Erreur lors du chargement des produits');
+      showNotification('Erreur lors du chargement des produits', 'error');
     } finally {
       setLoading(false);
     }
@@ -100,7 +102,7 @@ const ProduitsList: React.FC = () => {
         setProduits(produits.filter(p => p.id !== id));
       } catch (error) {
         console.error('Error deleting produit:', error);
-        alert('Erreur lors de la suppression du produit');
+        showNotification('Erreur lors de la suppression du produit', 'error');
       }
     }
   };
@@ -112,7 +114,7 @@ const ProduitsList: React.FC = () => {
       setShowImportDialog(false);
       
       // Show success message
-      alert(`Importation réussie!\n${result.imported} produit(s) importé(s)\n${result.duplicates} doublon(s) ignoré(s)\n${result.skipped} ligne(s) ignorée(s)`);
+      showNotification(`Importation réussie! ${result.imported} produit(s) importé(s), ${result.duplicates} doublon(s) ignoré(s), ${result.skipped} ligne(s) ignorée(s)`, 'success');
     }
   };
 

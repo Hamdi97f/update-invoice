@@ -7,6 +7,7 @@ import { useDatabase } from '../hooks/useDatabase';
 import FactureForm from './FactureForm';
 import PaymentForm from './PaymentForm';
 import AvoirsList from './AvoirsList';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface FacturesListProps {
   onCreateNew: () => void;
@@ -45,6 +46,7 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
   const [pdfError, setPdfError] = useState<string | null>(null);
   
   const { getFactures, savePDF, isReady, query } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -209,7 +211,7 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
   // Bulk operations using the new combined PDF generator
   const handleBulkDownload = async () => {
     if (selectedFactures.size === 0) {
-      alert('Veuillez sélectionner au moins une facture');
+      showNotification('Veuillez sélectionner au moins une facture', 'warning');
       return;
     }
 
@@ -242,12 +244,12 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
         }
       }
       
-      alert(`${selectedFacturesData.length} facture(s) téléchargée(s) avec succès`);
+      showNotification(`${selectedFacturesData.length} facture(s) téléchargée(s) avec succès`, 'success');
       
     } catch (error: any) {
       console.error('Error downloading PDFs:', error);
       setPdfError(error.message || 'Erreur lors du téléchargement des PDFs');
-      alert('Erreur lors du téléchargement des PDFs: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors du téléchargement des PDFs: ' + (error.message || 'Erreur inconnue'), 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -255,7 +257,7 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
 
   const handleBulkPrint = async () => {
     if (selectedFactures.size === 0) {
-      alert('Veuillez sélectionner au moins une facture');
+      showNotification('Veuillez sélectionner au moins une facture', 'warning');
       return;
     }
 
@@ -290,7 +292,7 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
     } catch (error: any) {
       console.error('Error printing PDFs:', error);
       setPdfError(error.message || 'Erreur lors de l\'impression des PDFs');
-      alert('Erreur lors de l\'impression des PDFs: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de l\'impression des PDFs: ' + (error.message || 'Erreur inconnue'), 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -309,7 +311,7 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
     } catch (error: any) {
       console.error('Error generating PDF:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF');
-      alert('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 
@@ -322,7 +324,7 @@ const FacturesList: React.FC<FacturesListProps> = ({ onCreateNew, onEdit, onDele
     } catch (error: any) {
       console.error('Error generating PDF for print:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF pour impression');
-      alert('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 

@@ -8,6 +8,7 @@ import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
 import ProduitForm from './ProduitForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface BonLivraisonFormProps {
   isOpen: boolean;
@@ -49,6 +50,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
   const [newProductType, setNewProductType] = useState<'vente' | 'achat'>('vente');
 
   const { query, isElectron, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   const generateNumero = async () => {
     if (!isReady) return;
@@ -392,7 +394,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
     if (!isReady) return;
     
     if (!selectedClient || lignes.length === 0) {
-      alert('Veuillez sélectionner un client et ajouter au moins une ligne');
+      showNotification('Veuillez sélectionner un client et ajouter au moins une ligne', 'warning');
       return;
     }
 
@@ -468,7 +470,7 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       
     } catch (error) {
       console.error('Error saving bon de livraison:', error);
-      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+      showNotification(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`, 'error');
     }
   };
 

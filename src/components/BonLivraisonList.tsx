@@ -7,6 +7,7 @@ import { useDatabase } from '../hooks/useDatabase';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import BonLivraisonForm from './BonLivraisonForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface BonLivraisonListProps {
   onCreateNew: () => void;
@@ -37,6 +38,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
   const [pdfError, setPdfError] = useState<string | null>(null);
   
   const { query, savePDF, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -264,12 +266,12 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
 
   const handleStartConversion = () => {
     if (selectedBons.size === 0) {
-      alert('Veuillez sélectionner au moins un bon de livraison');
+      showNotification('Veuillez sélectionner au moins un bon de livraison', 'warning');
       return;
     }
 
     if (!canConvertSelected()) {
-      alert('Tous les bons de livraison sélectionnés doivent avoir le même client pour être convertis ensemble');
+      showNotification('Tous les bons de livraison sélectionnés doivent avoir le même client pour être convertis ensemble', 'warning');
       return;
     }
 
@@ -288,14 +290,14 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
       setIsConversionMode(false);
       setSelectedBons(new Set());
       
-      alert(`${selectedData.length} bon(s) de livraison converti(s) avec succès en une seule facture`);
+      showNotification(`${selectedData.length} bon(s) de livraison converti(s) avec succès en une seule facture`, 'success');
       
       // Reload bons to reflect any changes
       loadBonsLivraison();
       
     } catch (error: any) {
       console.error('Error during conversion:', error);
-      alert('Erreur lors de la conversion: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la conversion: ' + (error.message || 'Erreur inconnue'), 'error');
     } finally {
       setIsConverting(false);
     }
@@ -504,7 +506,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     } catch (error: any) {
       console.error('Error generating PDF:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF');
-      alert('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 
@@ -517,7 +519,7 @@ const BonLivraisonList: React.FC<BonLivraisonListProps> = ({ onCreateNew, onEdit
     } catch (error: any) {
       console.error('Error generating PDF for print:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF pour impression');
-      alert('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 

@@ -3,6 +3,7 @@ import { X, Save } from 'lucide-react';
 import { Client } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface ClientFormProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ isOpen, onClose, onSave, client
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isOpen && isReady) {

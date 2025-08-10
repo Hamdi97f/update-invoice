@@ -5,6 +5,7 @@ import { useDatabase } from '../hooks/useDatabase';
 import ClientForm from './ClientForm';
 import CSVImportDialog from './CSVImportDialog';
 import { ImportResult } from '../utils/csvImporter';
+import { useNotification } from '../contexts/NotificationContext';
 
 const ClientsList: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
@@ -14,6 +15,7 @@ const ClientsList: React.FC = () => {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -41,7 +43,7 @@ const ClientsList: React.FC = () => {
       setClients(result);
     } catch (error) {
       console.error('Error loading clients:', error);
-      alert('Erreur lors du chargement des clients');
+      showNotification('Erreur lors du chargement des clients', 'error');
     } finally {
       setLoading(false);
     }
@@ -108,7 +110,7 @@ const ClientsList: React.FC = () => {
         setClients(clients.filter(c => c.id !== id));
       } catch (error) {
         console.error('Error deleting client:', error);
-        alert('Erreur lors de la suppression du client');
+        showNotification('Erreur lors de la suppression du client', 'error');
       }
     }
   };
@@ -120,7 +122,7 @@ const ClientsList: React.FC = () => {
       setShowImportDialog(false);
       
       // Show success message
-      alert(`Importation réussie!\n${result.imported} client(s) importé(s)\n${result.duplicates} doublon(s) ignoré(s)\n${result.skipped} ligne(s) ignorée(s)`);
+      showNotification(`Importation réussie! ${result.imported} client(s) importé(s), ${result.duplicates} doublon(s) ignoré(s), ${result.skipped} ligne(s) ignorée(s)`, 'success');
     }
   };
 

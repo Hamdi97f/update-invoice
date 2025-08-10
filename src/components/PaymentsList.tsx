@@ -4,6 +4,7 @@ import { Payment, Facture } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { useDatabase } from '../hooks/useDatabase';
 import PaymentForm from './PaymentForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 const PaymentsList: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -18,6 +19,7 @@ const PaymentsList: React.FC = () => {
   const [selectedFacture, setSelectedFacture] = useState<Facture | null>(null);
   
   const { query, isElectron } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     loadPayments();

@@ -16,6 +16,7 @@ import ActivationDialog from './components/ActivationDialog';
 import PasswordProtection from './components/PasswordProtection';
 import { Facture, Devis, BonLivraison, CommandeFournisseur } from './types';
 import { useDatabase } from './hooks/useDatabase';
+import { NotificationProvider } from './contexts/NotificationContext';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
@@ -265,9 +266,13 @@ function App() {
   };
 
   return (
-    <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
-      {renderCurrentPage()}
-    </Layout>
+    <NotificationProvider>
+      <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
+    <NotificationProvider>
+      <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
+        {renderCurrentPage()}
+      </Layout>
+    </NotificationProvider>
   );
 }
 

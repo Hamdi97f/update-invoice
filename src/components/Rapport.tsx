@@ -8,6 +8,7 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useNotification } from '../contexts/NotificationContext';
 
 // Register ChartJS components
 ChartJS.register(
@@ -60,6 +61,7 @@ const Rapport: React.FC = () => {
   });
   
   const { query, isReady, savePDF } = useDatabase();
+  const { showNotification } = useNotification();
   
   useEffect(() => {
     if (isReady) {
@@ -550,9 +552,11 @@ const Rapport: React.FC = () => {
         throw new Error(result.error || 'Erreur lors de l\'export du PDF');
       }
       
+      showNotification('Rapport exporté en PDF avec succès', 'success');
+      
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      alert('Erreur lors de l\'export du rapport en PDF');
+      showNotification('Erreur lors de l\'export du rapport en PDF', 'error');
     }
   };
   

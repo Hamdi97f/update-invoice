@@ -7,6 +7,7 @@ import { useDatabase } from '../hooks/useDatabase';
 import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import DevisForm from './DevisForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface DevisListProps {
   onCreateNew: () => void;
@@ -38,6 +39,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
   const [pdfError, setPdfError] = useState<string | null>(null);
   
   const { query, savePDF, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -261,12 +263,12 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
 
   const handleStartConversion = () => {
     if (selectedDevis.size === 0) {
-      alert('Veuillez sélectionner au moins un devis');
+      showNotification('Veuillez sélectionner au moins un devis', 'warning');
       return;
     }
 
     if (!canConvertSelected()) {
-      alert('Tous les devis sélectionnés doivent avoir le même client pour être convertis ensemble');
+      showNotification('Tous les devis sélectionnés doivent avoir le même client pour être convertis ensemble', 'warning');
       return;
     }
 
@@ -293,14 +295,14 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
       setIsConversionMode(false);
       setSelectedDevis(new Set());
       
-      alert(`${selectedData.length} devis converti(s) avec succès en ${conversionType === 'facture' ? 'facture(s)' : 'bon(s) de livraison'}`);
+      showNotification(`${selectedData.length} devis converti(s) avec succès en ${conversionType === 'facture' ? 'facture(s)' : 'bon(s) de livraison'}`, 'success');
       
       // Reload devis to reflect status changes
       loadDevis();
       
     } catch (error: any) {
       console.error('Error during conversion:', error);
-      alert('Erreur lors de la conversion: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la conversion: ' + (error.message || 'Erreur inconnue'), 'error');
     } finally {
       setIsConverting(false);
     }
@@ -447,7 +449,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
     } catch (error: any) {
       console.error('Error generating PDF:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF');
-      alert('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 
@@ -460,7 +462,7 @@ const DevisList: React.FC<DevisListProps> = ({ onCreateNew, onEdit, onDelete }) 
     } catch (error: any) {
       console.error('Error generating PDF for print:', error);
       setPdfError(error.message || 'Erreur lors de la génération du PDF pour impression');
-      alert('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'));
+      showNotification('Erreur lors de la génération du PDF pour impression: ' + (error.message || 'Erreur inconnue'), 'error');
     }
   };
 

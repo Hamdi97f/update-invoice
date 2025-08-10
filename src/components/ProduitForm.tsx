@@ -3,6 +3,7 @@ import { X, Save, Store, ShoppingCart, CheckCircle } from 'lucide-react';
 import { Produit } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface ProduitFormProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ const ProduitForm: React.FC<ProduitFormProps> = ({ isOpen, onClose, onSave, prod
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isOpen && isReady) {

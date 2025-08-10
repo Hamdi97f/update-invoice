@@ -8,6 +8,7 @@ import { getNextDocumentNumber } from '../utils/numberGenerator';
 import { v4 as uuidv4 } from 'uuid';
 import ClientForm from './ClientForm';
 import ProduitForm from './ProduitForm';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface FactureFormProps {
   isOpen: boolean;
@@ -59,6 +60,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
   const [newProductType, setNewProductType] = useState<'vente' | 'achat'>('vente');
 
   const { query, isElectron, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isOpen && isReady) {
@@ -402,7 +404,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
     if (!isReady) return;
     
     if (!selectedClient || lignes.length === 0) {
-      alert('Veuillez sélectionner un client et ajouter au moins une ligne');
+      showNotification('Veuillez sélectionner un client et ajouter au moins une ligne', 'warning');
       return;
     }
 
@@ -481,7 +483,7 @@ const FactureForm: React.FC<FactureFormProps> = ({
       
     } catch (error) {
       console.error('Error saving facture:', error);
-      alert(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`);
+      showNotification(`Erreur lors de la sauvegarde: ${error.message || 'Erreur inconnue'}`, 'error');
     }
   };
 

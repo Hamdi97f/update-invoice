@@ -3,6 +3,7 @@ import { Save, Upload, Download, RotateCcw, Settings as SettingsIcon, Building, 
 import { useDatabase } from '../hooks/useDatabase';
 import DocumentTemplateSettings from './DocumentTemplateSettings';
 import TaxSettings from './TaxSettings';
+import { useNotification } from '../contexts/NotificationContext';
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'company' | 'numbering' | 'templates' | 'taxes' | 'security' | 'general'>('company');
@@ -47,6 +48,7 @@ const Settings: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { query, backupDatabase, restoreDatabase, checkForUpdates, getAppVersion, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -132,10 +134,10 @@ const Settings: React.FC = () => {
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
         ['company', JSON.stringify(companyInfo)]
       );
-      alert('Informations de l\'entreprise sauvegardées avec succès');
+      showNotification('Informations de l\'entreprise sauvegardées avec succès', 'success');
     } catch (error) {
       console.error('Error saving company info:', error);
-      alert('Erreur lors de la sauvegarde des informations de l\'entreprise');
+      showNotification('Erreur lors de la sauvegarde des informations de l\'entreprise', 'error');
     }
   };
 
@@ -147,10 +149,10 @@ const Settings: React.FC = () => {
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
         ['numbering', JSON.stringify(numberingSettings)]
       );
-      alert('Paramètres de numérotation sauvegardés avec succès');
+      showNotification('Paramètres de numérotation sauvegardés avec succès', 'success');
     } catch (error) {
       console.error('Error saving numbering settings:', error);
-      alert('Erreur lors de la sauvegarde des paramètres de numérotation');
+      showNotification('Erreur lors de la sauvegarde des paramètres de numérotation', 'error');
     }
   };
 
@@ -189,7 +191,7 @@ const Settings: React.FC = () => {
         await query('DELETE FROM settings WHERE key = ?', ['appPassword']);
       }
 
-      alert('Paramètres de sécurité sauvegardés avec succès');
+      showNotification('Paramètres de sécurité sauvegardés avec succès', 'success');
       
       // Reset password fields
       setSecuritySettings(prev => ({
@@ -200,7 +202,7 @@ const Settings: React.FC = () => {
       
     } catch (error) {
       console.error('Error saving security settings:', error);
-      alert('Erreur lors de la sauvegarde des paramètres de sécurité');
+      showNotification('Erreur lors de la sauvegarde des paramètres de sécurité', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -238,10 +240,10 @@ const Settings: React.FC = () => {
         })]
       );
 
-      alert('Paramètres généraux sauvegardés avec succès');
+      showNotification('Paramètres généraux sauvegardés avec succès', 'success');
     } catch (error) {
       console.error('Error saving general settings:', error);
-      alert('Erreur lors de la sauvegarde des paramètres généraux');
+      showNotification('Erreur lors de la sauvegarde des paramètres généraux', 'error');
     }
   };
 
@@ -249,13 +251,13 @@ const Settings: React.FC = () => {
     try {
       const result = await backupDatabase();
       if (result.success) {
-        alert(`Sauvegarde créée avec succès dans:\n${result.path}`);
+        showNotification(`Sauvegarde créée avec succès dans: ${result.path}`, 'success');
       } else {
-        alert('Erreur lors de la sauvegarde');
+        showNotification('Erreur lors de la sauvegarde', 'error');
       }
     } catch (error) {
       console.error('Error backing up database:', error);
-      alert('Erreur lors de la sauvegarde de la base de données');
+      showNotification('Erreur lors de la sauvegarde de la base de données', 'error');
     }
   };
 
@@ -263,14 +265,14 @@ const Settings: React.FC = () => {
     try {
       const result = await restoreDatabase();
       if (result.success) {
-        alert('Base de données restaurée avec succès. L\'application va redémarrer.');
+        showNotification('Base de données restaurée avec succès. L\'application va redémarrer.', 'success');
         window.location.reload();
       } else {
-        alert('Restauration annulée ou échouée');
+        showNotification('Restauration annulée ou échouée', 'warning');
       }
     } catch (error) {
       console.error('Error restoring database:', error);
-      alert('Erreur lors de la restauration de la base de données');
+      showNotification('Erreur lors de la restauration de la base de données', 'error');
     }
   };
 
@@ -278,13 +280,13 @@ const Settings: React.FC = () => {
     try {
       const result = await checkForUpdates();
       if (result.updateAvailable) {
-        alert(`Mise à jour disponible: version ${result.version}`);
+        showNotification(`Mise à jour disponible: version ${result.version}`, 'info');
       } else {
-        alert('Aucune mise à jour disponible');
+        showNotification('Aucune mise à jour disponible', 'info');
       }
     } catch (error) {
       console.error('Error checking for updates:', error);
-      alert('Erreur lors de la vérification des mises à jour');
+      showNotification('Erreur lors de la vérification des mises à jour', 'error');
     }
   };
 
