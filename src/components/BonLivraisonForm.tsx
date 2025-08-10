@@ -948,11 +948,12 @@ const BonLivraisonForm: React.FC<BonLivraisonFormProps> = ({ isOpen, onClose, on
       {/* Click outside to close dropdowns */}
       {(showClientDropdown || showProductDropdown) && (
         <div 
-          className="fixed inset-0 z-5"
+          className="fixed inset-0 z-10"
           onClick={() => {
             setShowClientDropdown(false);
             setShowProductDropdown(false);
           }}
+          style={{ backgroundColor: 'transparent' }}
         />
       )}
     </>

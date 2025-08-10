@@ -1005,11 +1005,12 @@ const CommandeFournisseurForm: React.FC<CommandeFournisseurFormProps> = ({ isOpe
       {/* Click outside to close dropdowns */}
       {(showFournisseurDropdown || showProductDropdown) && (
         <div 
-          className="fixed inset-0 z-5"
+          className="fixed inset-0 z-10"
           onClick={() => {
             setShowFournisseurDropdown(false);
             setShowProductDropdown(false);
           }}
+          style={{ backgroundColor: 'transparent' }}
         />
       )}
     </>
