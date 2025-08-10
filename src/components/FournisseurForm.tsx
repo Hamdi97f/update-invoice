@@ -41,7 +41,7 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
           telephone: fournisseur.telephone || '',
           email: fournisseur.email || '',
           siret: fournisseur.siret || '',
-          showNotification('Veuillez sélectionner un fichier image (PNG, JPG, etc.)', 'warning');
+          matriculeFiscal: fournisseur.matriculeFiscal || ''
         });
       } else {
         // Reset form for new fournisseur
@@ -54,9 +54,7 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
           email: '',
           siret: '',
           matriculeFiscal: ''
-        }
-        )
-        showNotification('Veuillez déposer un fichier CSV valide', 'warning');
+        });
       }
     }
   }, [fournisseur, isOpen, isReady]);
