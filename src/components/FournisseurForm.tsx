@@ -54,6 +54,8 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
           email: '',
           siret: '',
           matriculeFiscal: ''
+        }
+        )
         showNotification('Veuillez déposer un fichier CSV valide', 'warning');
       }
     }
