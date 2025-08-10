@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, Save, Calculator, Percent, DollarSign, ArrowUp, Arr
 import { TaxGroup } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
+import { useNotification } from '../contexts/NotificationContext';
 
 const TaxSettings: React.FC = () => {
   const [taxGroups, setTaxGroups] = useState<TaxGroup[]>([]);
@@ -20,6 +21,7 @@ const TaxSettings: React.FC = () => {
   });
 
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isReady) {
@@ -88,12 +90,12 @@ const TaxSettings: React.FC = () => {
     if (!isReady) return;
     
     if (!formData.name.trim()) {
-      alert('Le nom de la taxe est obligatoire');
+      showNotification('Le nom de la taxe est obligatoire', 'warning');
       return;
     }
 
     if (formData.value <= 0) {
-      alert('La valeur de la taxe doit être supérieure à 0');
+      showNotification('La valeur de la taxe doit être supérieure à 0', 'warning');
       return;
     }
 
@@ -130,9 +132,10 @@ const TaxSettings: React.FC = () => {
       setShowForm(false);
       setEditingTax(null);
       loadTaxGroups();
+      showNotification('Taxe sauvegardée avec succès', 'success');
     } catch (error) {
       console.error('Error saving tax:', error);
-      alert('Erreur lors de la sauvegarde de la taxe');
+      showNotification('Erreur lors de la sauvegarde de la taxe', 'error');
     }
   };
 
@@ -143,9 +146,10 @@ const TaxSettings: React.FC = () => {
       try {
         await query('DELETE FROM tax_groups WHERE id = ?', [id]);
         loadTaxGroups();
+        showNotification('Taxe supprimée avec succès', 'success');
       } catch (error) {
         console.error('Error deleting tax:', error);
-        alert('Erreur lors de la suppression de la taxe');
+        showNotification('Erreur lors de la suppression de la taxe', 'error');
       }
     }
   };
@@ -159,7 +163,7 @@ const TaxSettings: React.FC = () => {
       loadTaxGroups();
     } catch (error) {
       console.error('Error toggling tax status:', error);
-      alert('Erreur lors de la modification du statut');
+      showNotification('Erreur lors de la modification du statut', 'error');
     }
   };
 
@@ -178,7 +182,7 @@ const TaxSettings: React.FC = () => {
       loadTaxGroups();
     } catch (error) {
       console.error('Error updating tax order:', error);
-      alert('Erreur lors de la modification de l\'ordre');
+      showNotification('Erreur lors de la modification de l\'ordre', 'error');
     }
   };
 

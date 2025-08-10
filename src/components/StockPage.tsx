@@ -3,6 +3,7 @@ import { Package, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Plus, Minus, 
 import { Produit } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { formatCurrency } from '../utils/currency';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface StockMovement {
   id: string;
@@ -37,14 +38,19 @@ const StockPage: React.FC = () => {
     allowNegativeStock: true
   });
   
-  const { query, isElectron } = useDatabase();
+  const { query, isElectron, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
-    loadProduits();
-    loadStockSettings();
-  }, []);
+    if (isReady) {
+      loadProduits();
+      loadStockSettings();
+    }
+  }, [isReady]);
 
   const loadProduits = async () => {
+    if (!isReady) return;
+    
     try {
       if (isElectron) {
         const result = await query('SELECT * FROM produits ORDER BY nom ASC');
@@ -82,6 +88,11 @@ const StockPage: React.FC = () => {
   };
 
   const saveStockSettings = async () => {
+    if (!isReady) {
+      showNotification('Base de données non prête. Veuillez patienter.', 'warning');
+      return;
+    }
+    
     try {
       if (isElectron) {
         await query(
@@ -91,11 +102,11 @@ const StockPage: React.FC = () => {
       } else {
         localStorage.setItem('stockSettings', JSON.stringify(stockSettings));
       }
-      alert('Paramètres de stock sauvegardés avec succès');
+      showNotification('Paramètres de stock sauvegardés avec succès', 'success');
       setShowSettings(false);
     } catch (error) {
       console.error('Error saving stock settings:', error);
-      alert('Erreur lors de la sauvegarde des paramètres');
+      showNotification('Erreur lors de la sauvegarde des paramètres', 'error');
     }
   };
 
@@ -242,7 +253,7 @@ const StockPage: React.FC = () => {
     if (!stockSettings.allowNegativeStock) {
       const product = produits.find(p => p.id === produitId);
       if (product && (product.stock || 0) + adjustment < 0) {
-        alert('Stock négatif non autorisé. Veuillez ajuster la quantité.');
+        showNotification('Stock négatif non autorisé. Veuillez ajuster la quantité.', 'warning');
         return;
       }
     }
@@ -293,7 +304,7 @@ const StockPage: React.FC = () => {
       loadProduits();
     } catch (error) {
       console.error('Error adjusting stock:', error);
-      alert('Erreur lors de l\'ajustement du stock');
+      showNotification('Erreur lors de l\'ajustement du stock', 'error');
     }
   };
 

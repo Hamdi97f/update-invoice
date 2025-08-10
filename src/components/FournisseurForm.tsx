@@ -3,6 +3,7 @@ import { X, Save } from 'lucide-react';
 import { Fournisseur } from '../types';
 import { useDatabase } from '../hooks/useDatabase';
 import { v4 as uuidv4 } from 'uuid';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface FournisseurFormProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { query, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isOpen && isReady) {
@@ -39,7 +41,7 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
           telephone: fournisseur.telephone || '',
           email: fournisseur.email || '',
           siret: fournisseur.siret || '',
-          matriculeFiscal: fournisseur.matriculeFiscal || ''
+          showNotification('Veuillez sélectionner un fichier image (PNG, JPG, etc.)', 'warning');
         });
       } else {
         // Reset form for new fournisseur
@@ -52,7 +54,7 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
           email: '',
           siret: '',
           matriculeFiscal: ''
-        });
+        showNotification('Veuillez déposer un fichier CSV valide', 'warning');
       }
     }
   }, [fournisseur, isOpen, isReady]);
@@ -120,6 +122,7 @@ const FournisseurForm: React.FC<FournisseurFormProps> = ({ isOpen, onClose, onSa
         matriculeFiscal: ''
       });
       
+      showNotification('Fournisseur sauvegardé avec succès', 'success');
     } catch (error: any) {
       console.error('Error saving fournisseur:', error);
       setError(`Erreur lors de la sauvegarde du fournisseur: ${error.message || 'Erreur inconnue'}`);

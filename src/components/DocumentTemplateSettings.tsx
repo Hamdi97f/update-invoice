@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Upload, Eye, RotateCcw, Settings, Image as ImageIcon, Type, Palette } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface TemplateSettings {
   // Margins (in mm)
@@ -155,19 +156,39 @@ const DocumentTemplateSettings: React.FC = () => {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>('');
   const [activeSection, setActiveSection] = useState<'layout' | 'logo' | 'title' | 'table' | 'footer' | 'colors'>('layout');
-  const { query, isElectron } = useDatabase();
+  const { query, isElectron, isReady } = useDatabase();
+  const { showNotification } = useNotification();
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (isReady) {
+      loadSettings();
+    }
+  }, [isReady]);
 
   const loadSettings = async () => {
+    if (!isReady) return;
+    
     try {
       if (isElectron) {
         const result = await query('SELECT value FROM settings WHERE key = ?', ['templateSettings']);
         if (result.length > 0) {
           const loadedSettings = JSON.parse(result[0].value);
-          setSettings({ ...defaultSettings, ...loadedSettings });
+          // Merge with default settings to ensure all properties exist
+          const mergedSettings = {
+            ...defaultSettings,
+            ...loadedSettings,
+            // Ensure nested objects are properly merged
+            margins: { ...defaultSettings.margins, ...(loadedSettings.margins || {}) },
+            logo: { ...defaultSettings.logo, ...(loadedSettings.logo || {}) },
+            title: { ...defaultSettings.title, ...(loadedSettings.title || {}) },
+            table: { ...defaultSettings.table, ...(loadedSettings.table || {}) },
+            footer: { ...defaultSettings.footer, ...(loadedSettings.footer || {}) },
+            amountInWords: { ...defaultSettings.amountInWords, ...(loadedSettings.amountInWords || {}) },
+            colors: { ...defaultSettings.colors, ...(loadedSettings.colors || {}) },
+            fonts: { ...defaultSettings.fonts, ...(loadedSettings.fonts || {}) },
+            spacing: { ...defaultSettings.spacing, ...(loadedSettings.spacing || {}) }
+          };
+          setSettings(mergedSettings);
         }
         
         // Load logo if exists
@@ -193,6 +214,11 @@ const DocumentTemplateSettings: React.FC = () => {
   };
 
   const saveSettings = async () => {
+    if (!isReady) {
+      showNotification('Base de données non prête. Veuillez patienter.', 'warning');
+      return;
+    }
+    
     try {
       if (isElectron) {
         await query(
@@ -213,19 +239,18 @@ const DocumentTemplateSettings: React.FC = () => {
         }
       }
       
-      alert('Paramètres de modèle sauvegardés avec succès');
+      showNotification('Paramètres de modèle sauvegardés avec succès', 'success');
     } catch (error) {
       console.error('Error saving template settings:', error);
-      alert('Erreur lors de la sauvegarde des paramètres');
+      showNotification('Erreur lors de la sauvegarde des paramètres', 'error');
     }
   };
 
   const resetToDefault = () => {
-    if (window.confirm('Êtes-vous sûr de vouloir remettre les paramètres par défaut ?')) {
-      setSettings(defaultSettings);
-      setLogoPreview('');
-      setLogoFile(null);
-    }
+    setSettings(defaultSettings);
+    setLogoPreview('');
+    setLogoFile(null);
+    showNotification('Paramètres remis aux valeurs par défaut', 'info');
   };
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,7 +270,7 @@ const DocumentTemplateSettings: React.FC = () => {
         };
         reader.readAsDataURL(file);
       } else {
-        alert('Veuillez sélectionner un fichier image (PNG, JPG, etc.)');
+        showNotification('Veuillez sélectionner un fichier image (PNG, JPG, etc.)', 'warning');
       }
     }
   };
